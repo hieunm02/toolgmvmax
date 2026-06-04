@@ -460,6 +460,17 @@ export default function Dashboard() {
     });
   };
 
+  const handleCopyText = (textToCopy: string, label: string) => {
+    navigator.clipboard.writeText(textToCopy)
+      .then(() => {
+        showToast(lang === "vi" ? `Đã sao chép ${label}: ${textToCopy}` : `Copied ${label}: ${textToCopy}`, "success");
+      })
+      .catch((err) => {
+        showToast(lang === "vi" ? "Lỗi khi sao chép!" : "Copy failed!", "error");
+        console.error("Clipboard copy error:", err);
+      });
+  };
+
   // Auto hide toast notifications after 4 seconds
   useEffect(() => {
     if (toast) {
@@ -1328,9 +1339,18 @@ export default function Dashboard() {
               </svg>
             </div>
             <span className="text-gray-400 text-xs font-mono font-medium tracking-wide">{t.totalGmv}</span>
-            <div className="mt-2 flex items-baseline gap-2">
+            <div className="mt-2 flex items-center gap-1.5">
               <span className="text-2xl font-bold text-white tracking-tight">{formatVND(activeWidgets.totalGMV)}</span>
-              <span className="text-emerald-400 text-xs font-mono font-bold">▲ Live</span>
+              <button
+                onClick={() => handleCopyText(new Intl.NumberFormat('vi-VN').format(Math.round(activeWidgets.totalGMV)), lang === "vi" ? "Tổng GMV" : "Total GMV")}
+                className="text-gray-500 hover:text-cyan-400 p-1 rounded hover:bg-gray-800 transition-colors flex items-center justify-center"
+                title={lang === "vi" ? "Sao chép Tổng GMV" : "Copy Total GMV"}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                </svg>
+              </button>
+              <span className="text-emerald-400 text-xs font-mono font-bold ml-1">▲ Live</span>
             </div>
             <div className="mt-2 h-1 w-full bg-[#1F232B] rounded-full overflow-hidden">
               <div className="h-full bg-cyan-400 w-3/4 rounded-full" />
@@ -1345,9 +1365,18 @@ export default function Dashboard() {
               </svg>
             </div>
             <span className="text-gray-400 text-xs font-mono font-medium tracking-wide">{t.totalSpend}</span>
-            <div className="mt-2 flex items-baseline gap-2">
+            <div className="mt-2 flex items-center gap-1.5">
               <span className="text-2xl font-bold text-white tracking-tight">{formatVND(activeWidgets.totalSpend)}</span>
-              <span className="text-gray-500 text-xs font-mono">VND</span>
+              <button
+                onClick={() => handleCopyText(new Intl.NumberFormat('vi-VN').format(Math.round(activeWidgets.totalSpend)), lang === "vi" ? "Tổng chi phí" : "Total Spend")}
+                className="text-gray-500 hover:text-indigo-400 p-1 rounded hover:bg-gray-800 transition-colors flex items-center justify-center"
+                title={lang === "vi" ? "Sao chép Tổng chi phí" : "Copy Total Spend"}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                </svg>
+              </button>
+              <span className="text-gray-500 text-xs font-mono ml-1">VND</span>
             </div>
             <div className="mt-2 h-1 w-full bg-[#1F232B] rounded-full overflow-hidden">
               <div className="h-full bg-indigo-500 w-1/2 rounded-full" />
