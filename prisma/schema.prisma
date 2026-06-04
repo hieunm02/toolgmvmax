@@ -1,0 +1,180 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  name         String?
+  passwordHash String
+  role         String     @default("VIEWER") // ADMIN, MANAGER, VIEWER
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  shops        Shop[]     @relation("UserShops")
+
+  @@map("users")
+}
+
+model Shop {
+  id           String       @id @default(uuid())
+  name         String
+  tiktokShopId String       @unique
+  status       String       @default("ACTIVE")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  users        User[]       @relation("UserShops")
+  advertisers  Advertiser[]
+  products     Product[]
+  alerts       Alert[]
+
+  @@map("shops")
+}
+
+model Advertiser {
+  id             String     @id @default(uuid())
+  advertiserId   String     @unique
+  name           String
+  status         String     @default("ACTIVE")
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  shopId         String
+  shop           Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  campaigns      Campaign[]
+  creatives      Creative[]
+
+  @@map("advertisers")
+}
+
+model Campaign {
+  id            String           @id @default(uuid())
+  campaignId    String           @unique
+  name          String
+  status        String
+  objectiveType String
+  budget        Float            @default(0.0)
+  budgetMode    String           @default("BUDGET_MODE_INFINITE")
+  shoppingAdsType String?          @default("PRODUCT") // PRODUCT or LIVE
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  advertiserId  String
+  advertiser    Advertiser       @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  reports       CampaignReport[]
+  spendSnapshots CampaignSpendSnapshot[]
+
+  @@map("campaigns")
+}
+
+model Product {
+  id           String          @id @default(uuid())
+  productId    String          @unique
+  name         String
+  imageUrl     String?
+  sku          String?
+  stock        Int             @default(0)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  shopId       String
+  shop         Shop            @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  reports      ProductReport[]
+
+  @@map("products")
+}
+
+model Creative {
+  id           String           @id @default(uuid())
+  videoId      String           @unique
+  name         String
+  videoUrl     String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  advertiserId String
+  advertiser   Advertiser       @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  reports      CreativeReport[]
+
+  @@map("creatives")
+}
+
+model CampaignReport {
+  id             String   @id @default(uuid())
+  campaignId     String
+  campaign       Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  date           DateTime
+  spend          Float    @default(0.0)
+  gmv            Float    @default(0.0)
+  roi            Float    @default(0.0)
+  orders         Int      @default(0)
+  impressions    Int      @default(0)
+  clicks         Int      @default(0)
+  ctr            Float    @default(0.0)
+  conversionRate Float    @default(0.0)
+  createdAt      DateTime @default(now())
+
+  @@unique([campaignId, date])
+  @@map("campaign_reports")
+}
+
+model ProductReport {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  date      DateTime
+  spend     Float    @default(0.0)
+  gmv       Float    @default(0.0)
+  roi       Float    @default(0.0)
+  orders    Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([productId, date])
+  @@map("product_reports")
+}
+
+model CreativeReport {
+  id          String   @id @default(uuid())
+  videoId     String
+  creative    Creative @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  date        DateTime
+  spend       Float    @default(0.0)
+  gmv         Float    @default(0.0)
+  roi         Float    @default(0.0)
+  orders      Int      @default(0)
+  impressions Int      @default(0)
+  clicks      Int      @default(0)
+  ctr         Float    @default(0.0)
+  createdAt   DateTime @default(now())
+
+  @@unique([videoId, date])
+  @@map("creative_reports")
+}
+
+model Alert {
+  id           String   @id @default(uuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  type         String
+  message      String
+  rule         String
+  triggerValue Float
+  status       String   @default("UNRESOLVED") // UNRESOLVED, RESOLVED
+  createdAt    DateTime @default(now())
+
+  @@map("alerts")
+}
+
+model CampaignSpendSnapshot {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  timestamp  DateTime @default(now())
+  spend      Float    @default(0.0)
+  gmv        Float    @default(0.0)
+
+  @@map("campaign_spend_snapshots")
+}
