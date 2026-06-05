@@ -21,16 +21,17 @@ model User {
 }
 
 model Shop {
-  id           String       @id @default(uuid())
-  name         String
-  tiktokShopId String       @unique
-  status       String       @default("ACTIVE")
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  users        User[]       @relation("UserShops")
-  advertisers  Advertiser[]
-  products     Product[]
-  alerts       Alert[]
+  id                       String       @id @default(uuid())
+  name                     String
+  tiktokShopId             String       @unique
+  status                   String       @default("ACTIVE")
+  autoRelaunchRoiThreshold Float        @default(3.0)
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+  users                    User[]       @relation("UserShops")
+  advertisers              Advertiser[]
+  products                 Product[]
+  alerts                   Alert[]
 
   @@map("shops")
 }

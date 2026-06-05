@@ -9,7 +9,7 @@ export interface TelegramAlertPayload {
 }
 
 export async function sendTelegramAlert(payload: TelegramAlertPayload): Promise<boolean> {
-  if (process.env.DISABLE_TELEGRAM_ALERTS === "true" && payload.type !== "LOW_SPEND_30M" && payload.type !== "LOW_ROI_AUTO_RELAUNCHED") {
+  if (process.env.DISABLE_TELEGRAM_ALERTS === "true" && payload.type !== "LOW_SPEND_30M" && payload.type !== "LOW_ROI_AUTO_RELAUNCHED" && payload.type !== "BUDGET_AUTO_INCREASED") {
     logger.info("Telegram alerts are disabled via environment configuration. Skipping Telegram alert delivery.", {
       type: payload.type,
       shopName: payload.shopName,

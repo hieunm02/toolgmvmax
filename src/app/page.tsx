@@ -417,9 +417,11 @@ const translations = {
 };
 
 export default function Dashboard() {
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [lang, setLang] = useState<"en" | "vi">("vi"); // Default to Vietnamese
   const [activeTab, setActiveTab] = useState<"campaigns" | "products" | "creatives" | "alerts" | "ai" | "settings">("campaigns");
   const [selectedShop, setSelectedShop] = useState<string>("");
+  const [tempRoiThreshold, setTempRoiThreshold] = useState("3.0");
   const [selectedAdvertiser, setSelectedAdvertiser] = useState<string>("");
   const [dbAdvertisers, setDbAdvertisers] = useState<any[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
@@ -470,6 +472,14 @@ export default function Dashboard() {
         console.error("Clipboard copy error:", err);
       });
   };
+
+  // Initialize theme from localStorage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme") as "dark" | "light";
+    if (savedTheme) {
+      setTheme(savedTheme);
+    }
+  }, []);
 
   // Auto hide toast notifications after 4 seconds
   useEffect(() => {
@@ -572,8 +582,10 @@ export default function Dashboard() {
   // States for Shop Management
   const [newShopName, setNewShopName] = useState("");
   const [newShopTiktokId, setNewShopTiktokId] = useState("");
+  const [newShopRoi, setNewShopRoi] = useState("3.0");
   const [editingShopId, setEditingShopId] = useState<string | null>(null);
   const [editingShopName, setEditingShopName] = useState("");
+  const [editingShopRoi, setEditingShopRoi] = useState("3.0");
 
   const handleAddShop = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -582,12 +594,17 @@ export default function Dashboard() {
       const res = await fetch("/api/shops", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newShopName, tiktokShopId: newShopTiktokId }),
+        body: JSON.stringify({
+          name: newShopName,
+          tiktokShopId: newShopTiktokId,
+          autoRelaunchRoiThreshold: parseFloat(newShopRoi)
+        }),
       });
       const json = await res.json();
       if (json.success) {
         setNewShopName("");
         setNewShopTiktokId("");
+        setNewShopRoi("3.0");
         fetchShops();
         showToast(lang === "vi" ? "Thêm cửa hàng thành công!" : "Shop added successfully!", "success");
       } else {
@@ -605,20 +622,25 @@ export default function Dashboard() {
       const res = await fetch("/api/shops", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: shopId, name: editingShopName }),
+        body: JSON.stringify({
+          id: shopId,
+          name: editingShopName,
+          autoRelaunchRoiThreshold: parseFloat(editingShopRoi)
+        }),
       });
       const json = await res.json();
       if (json.success) {
         setEditingShopId(null);
         setEditingShopName("");
+        setEditingShopRoi("3.0");
         fetchShops();
         if (selectedShop === shopId) {
           fetchAdvertisers();
           fetchData();
         }
-        showToast(lang === "vi" ? "Đổi tên cửa hàng thành công!" : "Shop renamed successfully!", "success");
+        showToast(lang === "vi" ? "Cập nhật cửa hàng thành công!" : "Shop updated successfully!", "success");
       } else {
-        showToast(json.error || "Failed to rename shop", "error");
+        showToast(json.error || "Failed to update shop", "error");
       }
     } catch (err) {
       console.error(err);
@@ -944,6 +966,53 @@ export default function Dashboard() {
     fetchShops();
   }, []);
 
+  // Synchronize tempRoiThreshold when selected shop or shops list updates
+  useEffect(() => {
+    if (selectedShop) {
+      const currentShop = shops.find((s) => s.id === selectedShop);
+      if (currentShop) {
+        setTempRoiThreshold(currentShop.autoRelaunchRoiThreshold.toString());
+      }
+    } else {
+      setTempRoiThreshold("3.0");
+    }
+  }, [selectedShop, shops]);
+
+  const handleSaveRoiThreshold = async () => {
+    if (!selectedShop) return;
+    const thresholdValue = parseFloat(tempRoiThreshold);
+    if (isNaN(thresholdValue) || thresholdValue <= 0) {
+      showToast(lang === "vi" ? "Mức ROI không hợp lệ!" : "Invalid ROI threshold!", "error");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/shops", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedShop,
+          autoRelaunchRoiThreshold: thresholdValue,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast(
+          lang === "vi"
+            ? `Đã cập nhật mức ROI tự động lên camp thành < ${thresholdValue.toFixed(1)}!`
+            : `Updated auto-relaunch ROI threshold to < ${thresholdValue.toFixed(1)}!`,
+          "success"
+        );
+        fetchShops();
+      } else {
+        showToast(json.error || "Failed to update ROI threshold", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Error updating ROI threshold", "error");
+    }
+  };
+
   // Fetch Dashboard Metrics
   const fetchData = async (reportDate?: string, silent = false) => {
     if (!silent) setLoading(true);
@@ -1127,23 +1196,151 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#08090C] text-gray-100 flex flex-col font-sans select-none antialiased">
+    <div className={`min-h-screen bg-[#08090C] text-gray-100 flex flex-col font-sans select-none antialiased ${theme === "light" ? "light-theme" : ""}`}>
       {/* Background Grids */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/10 via-transparent to-transparent pointer-events-none" />
 
       {/* Header */}
-      <header className="border-b border-[#1F232B] bg-[#0E1015]/80 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-400 flex items-center justify-center font-black text-black text-sm tracking-wider">
-            GMV
+      <header className="border-b border-[#1F232B] bg-[#0E1015]/80 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/* Row 1 on Mobile: Logo/Title + Language/Theme */}
+        <div className="flex items-center justify-between gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-400 flex items-center justify-center font-black text-black text-sm tracking-wider flex-shrink-0">
+              GMV
+            </div>
+            <div>
+              <h1 className="text-base sm:text-lg font-bold tracking-wide text-white">{t.title}</h1>
+              <p className="text-[10px] sm:text-xs text-gray-500 font-mono hidden sm:block">{t.subtitle}</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-wide text-white">{t.title}</h1>
-            <p className="text-xs text-gray-500 font-mono">{t.subtitle}</p>
+
+          {/* Quick controls on the right (Language + Theme) on mobile, hidden on desktop */}
+          <div className="flex items-center gap-2 md:hidden">
+            {/* Language Selector */}
+            <div className="flex bg-[#15181F] border border-[#2B303C] rounded p-0.5">
+              <button
+                onClick={() => setLang("vi")}
+                className={`px-2 py-0.5 text-[9px] font-bold rounded transition-colors ${
+                  lang === "vi" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                VI
+              </button>
+              <button
+                onClick={() => setLang("en")}
+                className={`px-2 py-0.5 text-[9px] font-bold rounded transition-colors ${
+                  lang === "en" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                EN
+              </button>
+            </div>
+
+            {/* Theme Switcher */}
+            <button
+              onClick={() => {
+                const newTheme = theme === "dark" ? "light" : "dark";
+                setTheme(newTheme);
+                localStorage.setItem("theme", newTheme);
+              }}
+              className="flex items-center justify-center w-7 h-7 rounded bg-[#15181F] border border-[#2B303C] text-gray-400 hover:text-indigo-400 transition-all cursor-pointer flex-shrink-0"
+              title={lang === "vi" ? "Chuyển đổi giao diện Sáng/Tối" : "Toggle Light/Dark Theme"}
+            >
+              {theme === "dark" ? (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        {/* Action Controls: Dropdown and buttons */}
+        <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
+          {/* Ad Account Switcher */}
+          {dbAdvertisers.length > 0 && (
+            <div className="relative w-full sm:w-auto">
+              <select
+                value={selectedAdvertiser}
+                onChange={(e) => setSelectedAdvertiser(e.target.value)}
+                className="bg-[#15181F] text-gray-300 text-xs border border-[#2B303C] rounded px-3 py-2 cursor-pointer outline-none hover:border-indigo-500 transition-colors w-full sm:w-auto"
+              >
+                <option value="">{lang === "vi" ? "Tất cả tài khoản quảng cáo" : "All Ad Accounts"}</option>
+                {dbAdvertisers.map((adv) => (
+                  <option key={adv.id} value={adv.name}>
+                    {adv.name} ({adv.advertiserId})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Sync & Telegram buttons row */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Sync Button */}
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-semibold tracking-wide transition-all ${
+                syncing
+                  ? "bg-indigo-950 text-indigo-400 cursor-not-allowed border border-indigo-800/30"
+                  : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
+              }`}
+            >
+              {syncing ? (
+                <>
+                  <svg className="animate-spin h-3 w-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  {t.syncing}
+                </>
+              ) : (
+                <>
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
+                  </svg>
+                  <span className="truncate">{t.syncAccounts}</span>
+                </>
+              )}
+            </button>
+
+            {/* Telegram Report Button */}
+            <button
+              onClick={handleSendTelegramReport}
+              disabled={sendingReport}
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-semibold tracking-wide transition-all ${
+                sendingReport
+                  ? "bg-[#0b283d] text-sky-400 cursor-not-allowed border border-sky-950"
+                  : "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-600/20"
+              }`}
+            >
+              {sendingReport ? (
+                <>
+                  <svg className="animate-spin h-3 w-3 text-sky-400" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>{lang === "vi" ? "Đang gửi..." : "Sending..."}</span>
+                </>
+              ) : (
+                <>
+                  <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-1-.65-.35-1 .22-1.62.15-.15 2.7-2.48 2.75-2.7.01-.03.01-.15-.07-.22-.08-.07-.2-.05-.29-.03-.12.03-2.04 1.29-5.74 3.79-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.83-.27-1.49-.41-1.43-.87.03-.24.36-.49.98-.74 3.84-1.67 6.4-2.77 7.68-3.3 3.65-1.52 4.41-1.78 4.9-.18l.05.09c.07.13.14.3.16.48.02.13.01.27-.01.4z"/>
+                  </svg>
+                  <span className="truncate">{lang === "vi" ? "Báo cáo" : "Report"}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Language & Theme Switcher on Desktop (Hidden on Mobile) */}
+        <div className="hidden md:flex items-center gap-3">
           {/* Language Selector */}
           <div className="flex bg-[#15181F] border border-[#2B303C] rounded p-0.5">
             <button
@@ -1164,86 +1361,32 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Shop Switcher removed - moved to Main UI buttons */}
-
-          {/* Ad Account Switcher */}
-          {dbAdvertisers.length > 0 && (
-            <div className="relative">
-              <select
-                value={selectedAdvertiser}
-                onChange={(e) => setSelectedAdvertiser(e.target.value)}
-                className="bg-[#15181F] text-gray-300 text-xs border border-[#2B303C] rounded px-3 py-2 cursor-pointer outline-none hover:border-indigo-500 transition-colors"
-              >
-                <option value="">{lang === "vi" ? "Tất cả tài khoản quảng cáo" : "All Ad Accounts"}</option>
-                {dbAdvertisers.map((adv) => (
-                  <option key={adv.id} value={adv.name}>
-                    {adv.name} ({adv.advertiserId})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Sync Button */}
+          {/* Theme Switcher */}
           <button
-            onClick={handleSync}
-            disabled={syncing}
-            className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-semibold tracking-wide transition-all ${
-              syncing
-                ? "bg-indigo-950 text-indigo-400 cursor-not-allowed border border-indigo-800/30"
-                : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
-            }`}
+            onClick={() => {
+              const newTheme = theme === "dark" ? "light" : "dark";
+              setTheme(newTheme);
+              localStorage.setItem("theme", newTheme);
+            }}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#15181F] border border-[#2B303C] text-gray-400 hover:text-indigo-400 hover:border-indigo-500/50 transition-all cursor-pointer flex-shrink-0"
+            title={lang === "vi" ? "Chuyển đổi giao diện Sáng/Tối" : "Toggle Light/Dark Theme"}
+            id="theme-toggle-btn"
           >
-            {syncing ? (
-              <>
-                <svg className="animate-spin h-3 w-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                {t.syncing}
-              </>
+            {theme === "dark" ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+              </svg>
             ) : (
-              <>
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
-                </svg>
-                {t.syncAccounts}
-              </>
-            )}
-          </button>
-
-          {/* Telegram Report Button */}
-          <button
-            onClick={handleSendTelegramReport}
-            disabled={sendingReport}
-            className={`flex items-center gap-2 px-4 py-2 rounded text-xs font-semibold tracking-wide transition-all ${
-              sendingReport
-                ? "bg-[#0b283d] text-sky-400 cursor-not-allowed border border-sky-950"
-                : "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-600/20"
-            }`}
-          >
-            {sendingReport ? (
-              <>
-                <svg className="animate-spin h-3 w-3 text-sky-400" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                {lang === "vi" ? "Đang gửi..." : "Sending..."}
-              </>
-            ) : (
-              <>
-                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-1-.65-.35-1 .22-1.62.15-.15 2.7-2.48 2.75-2.7.01-.03.01-.15-.07-.22-.08-.07-.2-.05-.29-.03-.12.03-2.04 1.29-5.74 3.79-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.83-.27-1.49-.41-1.43-.87.03-.24.36-.49.98-.74 3.84-1.67 6.4-2.77 7.68-3.3 3.65-1.52 4.41-1.78 4.9-.18l.05.09c.07.13.14.3.16.48.02.13.01.27-.01.4z"/>
-                </svg>
-                {lang === "vi" ? "Báo cáo Telegram" : "Telegram Report"}
-              </>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
             )}
           </button>
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-6 py-6 flex flex-col gap-6">
+      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col gap-6">
 
         {/* Shop Switcher Buttons */}
         <section className="flex flex-col gap-2.5 bg-[#111318]/50 border border-[#1F232B]/85 rounded-xl p-4.5 backdrop-blur-md relative overflow-hidden">
@@ -1294,7 +1437,7 @@ export default function Dashboard() {
         </section>
 
         {/* Global Date Picker */}
-        <section className="flex items-center justify-between">
+        <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3 bg-[#111318] border border-[#1F232B] rounded-lg px-5 py-3">
             <svg className="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -1327,6 +1470,29 @@ export default function Dashboard() {
               </span>
             )}
           </div>
+
+          {selectedShop && (
+            <div className="flex items-center gap-3 bg-[#111318] border border-[#1F232B] rounded-lg px-5 py-3">
+              <span className="text-xs text-gray-300 font-medium">
+                {lang === "vi" ? "🤖 Tự động lên camp khi ROI <" : "🤖 Auto-relaunch when ROI <"}
+              </span>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="10"
+                value={tempRoiThreshold}
+                onChange={(e) => setTempRoiThreshold(e.target.value)}
+                className="w-14 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
+              />
+              <button
+                onClick={handleSaveRoiThreshold}
+                className="px-3.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shadow-md shadow-indigo-600/15"
+              >
+                {lang === "vi" ? "Lưu" : "Save"}
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Top KPI Widgets */}
@@ -1439,8 +1605,8 @@ export default function Dashboard() {
         </section>
 
         {/* Tab Controls */}
-        <section className="flex items-center justify-between border-b border-[#1F232B] pb-px">
-          <div className="flex gap-1">
+        <section className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#1F232B] pb-px">
+          <div className="flex gap-1 overflow-x-auto max-w-full no-scrollbar whitespace-nowrap">
             {[
               { id: "campaigns", label: t.tabCampaigns },
               { id: "products", label: t.tabProducts },
@@ -1452,7 +1618,7 @@ export default function Dashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-5 py-3.5 text-xs font-semibold border-b-2 transition-all outline-none ${
+                className={`px-5 py-3.5 text-xs font-semibold border-b-2 transition-all outline-none flex-shrink-0 ${
                   activeTab === tab.id
                     ? "border-indigo-500 text-indigo-400 bg-indigo-500/5"
                     : "border-transparent text-gray-400 hover:text-gray-200"
@@ -1462,7 +1628,7 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-          <div className="text-[10px] text-gray-500 font-mono">
+          <div className="text-[10px] text-gray-500 font-mono flex-shrink-0 self-end md:self-auto pb-1 md:pb-0">
             {lang === "vi" ? "Đồng bộ tự động: 5 phút / lần" : t.lastUpdate}
           </div>
         </section>
@@ -1694,7 +1860,7 @@ export default function Dashboard() {
                                 <td colSpan={11} className="px-6 py-5">
                                   <div className="flex flex-col lg:flex-row gap-6 w-full">
                                     {/* Left Column - Spend Chart */}
-                                    <div className="flex-1 min-w-[320px]">
+                                    <div className="flex-1 min-w-0 w-full">
                                       <CampaignSpendChart
                                         reports={camp.reports || []}
                                         budget={camp.budget}
@@ -2449,7 +2615,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     alerts.map((alert) => (
-                      <div key={alert.id} className={`px-6 py-4 flex items-start justify-between gap-4 transition-colors ${
+                      <div key={alert.id} className={`px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-start justify-between gap-4 transition-colors ${
                         alert.status === "UNRESOLVED" ? "bg-red-500/5 hover:bg-red-500/10" : "hover:bg-[#151820]/45"
                       }`}>
                         <div className="flex gap-3">
@@ -2516,7 +2682,7 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     recommendations.map((rec) => (
-                      <div key={rec.id} className="px-6 py-5 flex items-start justify-between gap-6 hover:bg-[#151820]/45 transition-colors">
+                      <div key={rec.id} className="px-4 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6 hover:bg-[#151820]/45 transition-colors">
                         <div className="flex gap-4">
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
                             rec.action === "SCALE_BUDGET"
@@ -2603,6 +2769,21 @@ export default function Dashboard() {
                             required
                           />
                         </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-gray-400 font-mono">
+                            {lang === "vi" ? "ROI TỐI THIỂU TỰ ĐỘNG LÊN CAMP" : "AUTO-RELAUNCH ROI THRESHOLD"}
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0.1"
+                            max="10"
+                            value={newShopRoi}
+                            onChange={(e) => setNewShopRoi(e.target.value)}
+                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2 outline-none focus:border-indigo-500 transition-colors w-full font-mono"
+                            required
+                          />
+                        </div>
                       </div>
                       <button
                         type="submit"
@@ -2627,36 +2808,59 @@ export default function Dashboard() {
                             <div key={shop.id} className="bg-[#0E1015] border border-[#1F232B] rounded-lg px-4 py-3 flex items-center justify-between gap-4">
                               <div className="flex-1">
                                 {editingShopId === shop.id ? (
-                                  <div className="flex items-center gap-2 w-full">
-                                    <input
-                                      type="text"
-                                      value={editingShopName}
-                                      onChange={(e) => setEditingShopName(e.target.value)}
-                                      className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2.5 py-1 w-full outline-none focus:border-indigo-500"
-                                      autoFocus
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRenameShop(shop.id)}
-                                      className="px-3 py-1 rounded bg-emerald-950 text-emerald-400 hover:bg-emerald-900 border border-emerald-800/30 text-[10px] font-bold uppercase transition-colors"
-                                    >
-                                      {lang === "vi" ? "Lưu" : "Save"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingShopId(null);
-                                        setEditingShopName("");
-                                      }}
-                                      className="px-3 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700/30 text-[10px] font-bold uppercase transition-colors"
-                                    >
-                                      ✕
-                                    </button>
+                                  <div className="flex flex-col gap-2 w-full">
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="text"
+                                        value={editingShopName}
+                                        onChange={(e) => setEditingShopName(e.target.value)}
+                                        className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2.5 py-1 w-full outline-none focus:border-indigo-500"
+                                        placeholder={lang === "vi" ? "Tên cửa hàng" : "Shop Name"}
+                                        autoFocus
+                                      />
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[10px] text-gray-400 font-mono">ROI:</span>
+                                        <input
+                                          type="number"
+                                          step="0.1"
+                                          min="0.1"
+                                          max="10"
+                                          value={editingShopRoi}
+                                          onChange={(e) => setEditingShopRoi(e.target.value)}
+                                          className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-16 outline-none focus:border-indigo-500 text-center font-mono"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRenameShop(shop.id)}
+                                        className="px-3 py-1 rounded bg-emerald-950 text-emerald-400 hover:bg-emerald-900 border border-emerald-800/30 text-[10px] font-bold uppercase transition-colors"
+                                      >
+                                        {lang === "vi" ? "Lưu" : "Save"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingShopId(null);
+                                          setEditingShopName("");
+                                          setEditingShopRoi("3.0");
+                                        }}
+                                        className="px-3 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700/30 text-[10px] font-bold uppercase transition-colors"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
                                   </div>
                                 ) : (
                                   <div className="flex flex-col">
                                     <span className="font-semibold text-white text-xs">{shop.name}</span>
-                                    <span className="text-[10px] text-gray-500 font-mono mt-0.5">ID: {shop.tiktokShopId}</span>
+                                    <div className="flex items-center gap-3 mt-0.5">
+                                      <span className="text-[10px] text-gray-500 font-mono">ID: {shop.tiktokShopId}</span>
+                                      <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
+                                        {lang === "vi" ? `ROI tự động lên camp: < ${shop.autoRelaunchRoiThreshold.toFixed(1)}` : `Auto-relaunch ROI: < ${shop.autoRelaunchRoiThreshold.toFixed(1)}`}
+                                      </span>
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -2667,9 +2871,10 @@ export default function Dashboard() {
                                     onClick={() => {
                                       setEditingShopId(shop.id);
                                       setEditingShopName(shop.name);
+                                      setEditingShopRoi(shop.autoRelaunchRoiThreshold.toString());
                                     }}
                                     className="p-1.5 rounded bg-indigo-950/40 text-indigo-400 hover:bg-indigo-900/50 border border-indigo-800/20 text-[10px] font-bold uppercase transition-colors"
-                                    title={lang === "vi" ? "Đổi tên" : "Rename"}
+                                    title={lang === "vi" ? "Sửa" : "Edit"}
                                   >
                                     ✏️
                                   </button>

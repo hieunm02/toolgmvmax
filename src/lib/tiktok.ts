@@ -614,13 +614,35 @@ export class TikTokApiService {
         
         const oldConfig = infoData.data;
 
-        // 2. Format schedule start time in UTC as required by the TikTok Ads API.
-        // TikTok Ads API expects schedule_start_time in UTC timezone, which is then displayed in the ad account's timezone.
-        // We add 1 minute (60000ms) to ensure the start time is slightly in the future.
+        // 2. Format schedule start time in UTC timezone.
+        // The TikTok Ads API expects schedule_start_time in UTC. It then converts this value to the ad account's local timezone.
+        // To make the campaign start immediately and prevent the frontend Ads Manager UI from displaying a
+        // "set the start time at least 5 minutes after submission time" validation error, we set the start time
+        // to the exact current time. Once created, the scheduled start time is immediately in the past/current,
+        // allowing the campaign to deliver immediately upon approval without any scheduled delay.
         const now = new Date();
-        const startTime = new Date(now.getTime() + 60000);
+        const startTime = now;
         const pad = (n: number) => n.toString().padStart(2, '0');
-        const formattedStartTime = `${startTime.getUTCFullYear()}-${pad(startTime.getUTCMonth() + 1)}-${pad(startTime.getUTCDate())} ${pad(startTime.getUTCHours())}:${pad(startTime.getUTCMinutes())}:${pad(startTime.getUTCSeconds())}`;
+        
+        let formattedStartTime = "";
+        try {
+          const formatter = new Intl.DateTimeFormat("en-US", {
+            timeZone: "UTC",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hourCycle: "h23",
+          });
+          const parts = formatter.formatToParts(startTime);
+          const getVal = (type: string) => parts.find(p => p.type === type)?.value || "00";
+          formattedStartTime = `${getVal("year")}-${getVal("month")}-${getVal("day")} ${getVal("hour")}:${getVal("minute")}:${getVal("second")}`;
+        } catch (e) {
+          logger.error("Failed to format start time in UTC", e);
+          formattedStartTime = `${startTime.getUTCFullYear()}-${pad(startTime.getUTCMonth() + 1)}-${pad(startTime.getUTCDate())} ${pad(startTime.getUTCHours())}:${pad(startTime.getUTCMinutes())}:${pad(startTime.getUTCSeconds())}`;
+        }
 
         // 3. Generate a unique numeric request_id as an int64 string
         const requestId = String(Date.now()) + String(Math.floor(Math.random() * 1000));
@@ -731,6 +753,51 @@ export class TikTokApiService {
       }
     } catch (error) {
       logger.error("TikTok cloneCampaign failed", error);
+      throw error;
+    }
+  }
+
+  // Updates campaign budget on TikTok Ads
+  static async updateCampaignBudget(
+    accessToken: string,
+    advertiserId: string,
+    campaignId: string,
+    newBudget: number,
+    objectiveType: string
+  ): Promise<boolean> {
+    if (process.env.MOCK_TIKTOK_API === "true" || accessToken.startsWith("mock_")) {
+      logger.info("Mock updating campaign budget", { advertiserId, campaignId, newBudget });
+      return true;
+    }
+
+    try {
+      const isGmvMax = objectiveType === "OUTFLOW_GMV_MAX";
+      const url = isGmvMax
+        ? `${this.getBaseUrl()}/campaign/gmv_max/update/`
+        : `${this.getBaseUrl()}/campaign/update/`;
+
+      const payload: any = {
+        advertiser_id: advertiserId,
+        campaign_id: campaignId,
+        budget: newBudget
+      };
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Token": accessToken,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const resData = await response.json();
+      if (resData.code !== 0) {
+        throw new Error(resData.message || "Failed to update campaign budget");
+      }
+      return true;
+    } catch (error) {
+      logger.error("TikTok updateCampaignBudget failed", error, { campaignId });
       throw error;
     }
   }

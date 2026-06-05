@@ -22,7 +22,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, tiktokShopId } = body;
+    const { name, tiktokShopId, autoRelaunchRoiThreshold } = body;
 
     if (!name || !tiktokShopId) {
       return NextResponse.json({ success: false, error: "Missing name or tiktokShopId" }, { status: 400 });
@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       data: {
         name,
         tiktokShopId,
+        autoRelaunchRoiThreshold: autoRelaunchRoiThreshold !== undefined ? parseFloat(autoRelaunchRoiThreshold) : 3.0,
         status: "ACTIVE",
       },
     });
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, tiktokShopId } = body;
+    const { id, name, tiktokShopId, autoRelaunchRoiThreshold } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, error: "Missing shop id" }, { status: 400 });
@@ -64,6 +65,9 @@ export async function PUT(request: Request) {
     const dataToUpdate: any = {};
     if (name !== undefined) dataToUpdate.name = name;
     if (tiktokShopId !== undefined) dataToUpdate.tiktokShopId = tiktokShopId;
+    if (autoRelaunchRoiThreshold !== undefined) {
+      dataToUpdate.autoRelaunchRoiThreshold = parseFloat(autoRelaunchRoiThreshold);
+    }
 
     const shop = await prisma.shop.update({
       where: { id },

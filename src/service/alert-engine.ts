@@ -6,6 +6,7 @@ import { sendTelegramAlert } from "../lib/telegram";
 import { logger } from "../lib/logger";
 import { prisma } from "../lib/db";
 import { CampaignRelaunchService } from "./relaunch";
+import { TikTokApiService } from "../lib/tiktok";
 
 export class AlertEngineService {
   // Evaluates performance alert rules for a specific shop
@@ -98,7 +99,8 @@ export class AlertEngineService {
       }
     }
 
-    // Rule 5: Automatic pause and relaunch for active campaigns with ROI < 3.0 and Spend >= 200,000 VND (with < 20 orders)
+    // Rule 5: Automatic pause and relaunch for active campaigns with ROI < shop.autoRelaunchRoiThreshold and Spend >= 200,000 VND (with < 20 orders)
+    const roiThreshold = shop.autoRelaunchRoiThreshold ?? 3.0;
     for (const campaign of todayCampaigns) {
       if (campaign.status !== "CAMPAIGN_STATUS_ENABLE") continue;
 
@@ -107,17 +109,17 @@ export class AlertEngineService {
       const campRoi = campSpend > 0 ? campGmv / campSpend : 0;
       const campOrders = campaign.reports.reduce((sum, r) => sum + r.orders, 0);
 
-      if (campSpend >= 200000 && campRoi < 3.0) {
+      if (campSpend >= 200000 && campRoi < roiThreshold) {
         if (campOrders >= 20) continue; // Safety guard: ignore if campaign has >= 20 orders today
 
-        logger.info(`Auto-relaunching campaign ${campaign.campaignId} due to low ROI (${campRoi.toFixed(2)}x) and spend (${campSpend.toLocaleString('vi-VN')}đ)`);
+        logger.info(`Auto-relaunching campaign ${campaign.campaignId} due to low ROI (${campRoi.toFixed(2)}x, threshold: ${roiThreshold.toFixed(1)}x) and spend (${campSpend.toLocaleString('vi-VN')}đ)`);
 
         const relaunchResult = await CampaignRelaunchService.relaunchCampaign(campaign.campaignId);
 
         if (relaunchResult.success) {
-          const message = `Tự động tạm dừng chiến dịch "${campaign.name}" (${campaign.campaignId}) và khởi tạo chiến dịch mới tương tự V2 (${relaunchResult.newCampaignId}) do ROI thấp: ${campRoi.toFixed(2)}x (Chi tiêu: ${campSpend.toLocaleString('vi-VN')}đ, Đơn hàng: ${campOrders}). [CAMPAIGN_ID:${campaign.campaignId}]`;
+          const message = `Tự động tạm dừng chiến dịch "${campaign.name}" (${campaign.campaignId}) và khởi tạo chiến dịch mới tương tự V2 (${relaunchResult.newCampaignId}) do ROI thấp: ${campRoi.toFixed(2)}x (Mức cấu hình: < ${roiThreshold.toFixed(1)}x, Chi tiêu: ${campSpend.toLocaleString('vi-VN')}đ, Đơn hàng: ${campOrders}). [CAMPAIGN_ID:${campaign.campaignId}]`;
           
-          await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", message, "ROI < 3.0 AND SPEND >= 200000 AND ORDERS < 20", campRoi);
+          await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", message, `ROI < ${roiThreshold.toFixed(1)} AND SPEND >= 200000 AND ORDERS < 20`, campRoi);
         } else {
           logger.error(`Failed to auto-relaunch campaign ${campaign.campaignId}: ${relaunchResult.error}`);
         }
@@ -134,69 +136,66 @@ export class AlertEngineService {
       }
     }
 
-    // Rule 6: Low spend in 30 minutes warning (Active campaigns spending < 100,000 VND in the last 30 minutes)
+    // Rule 6 (Low spend in 30 minutes warning) was disabled at user request.
+    // Spend speed reports are now triggered manually via the Telegram /tocdo command.
+
+
+    // Rule 7: Automatic budget increase when budget is almost exhausted and ROI > 3
     for (const campaign of todayCampaigns) {
       if (campaign.status !== "CAMPAIGN_STATUS_ENABLE") continue;
+      if (campaign.budgetMode !== "BUDGET_MODE_DAY") continue;
 
-      // Skip newly created campaigns (created in the last 30 minutes)
-      const campaignAgeMs = Date.now() - new Date(campaign.createdAt).getTime();
-      if (campaignAgeMs < 30 * 60 * 1000) continue;
+      const campSpend = campaign.reports.reduce((sum, r) => sum + r.spend, 0);
+      const campGmv = campaign.reports.reduce((sum, r) => sum + r.gmv, 0);
+      const campRoi = campSpend > 0 ? campGmv / campSpend : 0;
+      const campBudget = campaign.budget;
 
-      // Find the latest snapshot for this campaign
-      const latestSnap = await prisma.campaignSpendSnapshot.findFirst({
-        where: { campaignId: campaign.id },
-        orderBy: { timestamp: "desc" },
-      });
-
-      if (!latestSnap) continue;
-
-      // Find snapshot from 30 minutes ago
-      const targetTime = new Date(latestSnap.timestamp.getTime() - 30 * 60 * 1000);
-      const snap30m = await prisma.campaignSpendSnapshot.findFirst({
-        where: {
-          campaignId: campaign.id,
-          timestamp: { lte: targetTime },
-        },
-        orderBy: { timestamp: "desc" },
-      });
-
-      let spend30m = 0;
-      if (snap30m) {
-        const currDateStr = latestSnap.timestamp.toISOString().split("T")[0];
-        const prevDateStr = snap30m.timestamp.toISOString().split("T")[0];
-
-        if (currDateStr === prevDateStr) {
-          spend30m = Math.max(0, latestSnap.spend - snap30m.spend);
-        } else {
-          spend30m = latestSnap.spend;
-        }
-      } else {
-        spend30m = latestSnap.spend;
-      }
-
-      if (spend30m < 100000) {
-        // Check if we sent a LOW_SPEND_30M alert for this campaign in the last 1 hour
-        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        const recentAlertExists = await prisma.alert.findFirst({
+      // Budget is almost exhausted: spend >= 85% of budget
+      if (campSpend >= 0.85 * campBudget && campRoi > 3.0) {
+        // Rate-limit check: only once per 30 minutes
+        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+        const recentIncreaseExists = await prisma.alert.findFirst({
           where: {
             shopId: shop.id,
-            type: "LOW_SPEND_30M",
-            createdAt: { gte: oneHourAgo },
+            type: "BUDGET_AUTO_INCREASED",
+            createdAt: { gte: thirtyMinutesAgo },
             message: { contains: `[CAMPAIGN_ID:${campaign.campaignId}]` },
           },
         });
 
-        if (!recentAlertExists) {
-          const message = `Chiến dịch "${campaign.name}" (${campaign.campaignId}) chi tiêu chậm: chỉ tiêu ${spend30m.toLocaleString('vi-VN')}đ trong 30 phút qua. [CAMPAIGN_ID:${campaign.campaignId}]`;
-          
-          await this.triggerAlert(
-            shop.id,
-            shop.name,
-            "LOW_SPEND_30M",
-            message,
-            "ACTIVE_SPEND_30M < 100000",
-            spend30m
-          );
+        if (!recentIncreaseExists) {
+          const newBudget = campBudget + 500000;
+          logger.info(`Auto-increasing budget for campaign ${campaign.campaignId} by 500k to ${newBudget} due to exhaustion and ROI > 3 (${campRoi.toFixed(2)}x)`);
+
+          try {
+            const { accessToken, advertiserId } = campaign.advertiser;
+            await TikTokApiService.updateCampaignBudget(
+              accessToken,
+              advertiserId,
+              campaign.campaignId,
+              newBudget,
+              campaign.objectiveType
+            );
+
+            // Update budget in local database
+            await prisma.campaign.update({
+              where: { campaignId: campaign.campaignId },
+              data: { budget: newBudget }
+            });
+
+            const message = `Tự động tăng ngân sách chiến dịch "${campaign.name}" (${campaign.campaignId}) thêm 500.000đ (Ngân sách mới: ${newBudget.toLocaleString('vi-VN')}đ) do ngân sách cũ gần hết (${campSpend.toLocaleString('vi-VN')}đ / ${campBudget.toLocaleString('vi-VN')}đ) và ROI đạt: ${campRoi.toFixed(2)}x. [CAMPAIGN_ID:${campaign.campaignId}]`;
+
+            await this.triggerAlert(
+              shop.id,
+              shop.name,
+              "BUDGET_AUTO_INCREASED",
+              message,
+              "ACTIVE_BUDGET_EXHAUSTED >= 85% AND ROI > 3.0",
+              campRoi
+            );
+          } catch (e: any) {
+            logger.error(`Failed to auto-increase budget for campaign ${campaign.campaignId}: ${e.message}`);
+          }
         }
       }
     }

@@ -63,6 +63,8 @@ export class TelegramListenerService {
                 const chatId = update.message.chat.id.toString();
 
                 const commands = ["/report", "/baocao", "baocao", "báo cáo", "report"];
+                const spendSpeedCommands = ["/tocdo", "tocdo", "tốc độ", "tốc độ tiêu tiền", "toc do", "toc do tieu tien"];
+
                 if (commands.includes(text)) {
                   logger.info(`Received trigger command '${text}' from chat ${chatId}`);
                   
@@ -74,6 +76,18 @@ export class TelegramListenerService {
                   
                   if (!reportRes.success) {
                     await this.sendReply(token, chatId, `❌ Không thể gửi báo cáo: ${reportRes.message}`);
+                  }
+                } else if (spendSpeedCommands.includes(text)) {
+                  logger.info(`Received trigger command '${text}' from chat ${chatId}`);
+                  
+                  // Send processing feedback reply
+                  await this.sendReply(token, chatId, "🔄 Đang tính toán tốc độ tiêu tiền của các chiến dịch, vui lòng đợi...");
+
+                  // Trigger spend speed report to the requesting chat ID
+                  const reportRes = await TelegramReportService.sendSpendSpeedReport(chatId);
+                  
+                  if (!reportRes.success) {
+                    await this.sendReply(token, chatId, `❌ Không thể gửi báo cáo tốc độ chi tiêu: ${reportRes.message}`);
                   }
                 }
               }

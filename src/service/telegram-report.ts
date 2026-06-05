@@ -80,27 +80,28 @@ export class TelegramReportService {
 
         for (const advertiser of shop.advertisers) {
           for (const campaign of advertiser.campaigns) {
-            if (campaign.status !== "CAMPAIGN_STATUS_ENABLE") {
-              continue;
-            }
             const report = campaign.reports[0]; // Filtered where date = today
             if (report) {
+              // Add all campaigns' spend and GMV to the shop totals
               shopSpend += report.spend;
               shopGmv += report.gmv;
 
-              const cRoi = report.spend > 0 ? (report.gmv / report.spend).toFixed(2) : "0.00";
-              const cName = campaign.name;
-              
-              // Only include campaigns with active spend or results today to avoid spamming the message
-              if (report.spend > 0 || report.gmv > 0) {
-                const statusEmoji = campaign.status === "CAMPAIGN_STATUS_ENABLE" ? "🟢" : "🔴";
-                const shortName = cName.length > 35 ? cName.slice(0, 32) + "..." : cName;
-                const line = `  • ${statusEmoji} *${shortName}*: Chi phí: *${report.spend.toLocaleString("vi-VN")}đ* | Doanh thu: *${report.gmv.toLocaleString("vi-VN")}đ* | ROI: *${cRoi}x*`;
+              // Only list active campaigns in the detailed breakdown
+              if (campaign.status === "CAMPAIGN_STATUS_ENABLE") {
+                const cRoi = report.spend > 0 ? (report.gmv / report.spend).toFixed(2) : "0.00";
+                const cName = campaign.name;
                 
-                if (campaign.shoppingAdsType === "LIVE") {
-                  liveCampaignLines.push(line);
-                } else {
-                  productCampaignLines.push(line);
+                // Only include campaigns with active spend or results today to avoid spamming the message
+                if (report.spend > 0 || report.gmv > 0) {
+                  const statusEmoji = "🟢";
+                  const shortName = cName.length > 35 ? cName.slice(0, 32) + "..." : cName;
+                  const line = `  • ${statusEmoji} *${shortName}*: Chi phí: *${report.spend.toLocaleString("vi-VN")}đ* | Doanh thu: *${report.gmv.toLocaleString("vi-VN")}đ* | ROI: *${cRoi}x*`;
+                  
+                  if (campaign.shoppingAdsType === "LIVE") {
+                    liveCampaignLines.push(line);
+                  } else {
+                    productCampaignLines.push(line);
+                  }
                 }
               }
             }
@@ -164,6 +165,127 @@ export class TelegramReportService {
     } catch (error: any) {
       const errMsg = `Gửi báo cáo thất bại: ${error.message}`;
       logger.error("Failed to send Telegram report", error);
+      return { success: false, message: errMsg };
+    }
+  }
+
+  static async sendSpendSpeedReport(targetChatId?: string): Promise<{ success: boolean; message: string }> {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = targetChatId || process.env.TELEGRAM_CHAT_ID;
+
+    if (!token || !chatId || token === "your_telegram_bot_token" || chatId === "your_telegram_chat_id") {
+      const msg = "Cấu hình Telegram Bot Token hoặc Chat ID chưa được thiết lập chính xác trong file .env";
+      logger.warn(msg);
+      return { success: false, message: msg };
+    }
+
+    try {
+      const shops = await prisma.shop.findMany({
+        where: { status: "ACTIVE" },
+        include: {
+          advertisers: {
+            where: { status: "ACTIVE" },
+            include: {
+              campaigns: {
+                where: { status: "CAMPAIGN_STATUS_ENABLE" }
+              }
+            }
+          }
+        }
+      });
+
+      if (shops.length === 0) {
+        return { success: false, message: "Không tìm thấy cửa hàng hoạt động nào." };
+      }
+
+      const timeStr = new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      let reportText = `⏱️ *TỐC ĐỘ TIÊU TIỀN (30 PHÚT VỪA QUA)* ⏱️\n`;
+      reportText += `🕒 *Thời điểm kiểm tra:* ${timeStr}\n`;
+      reportText += `───────────────────\n\n`;
+
+      let totalSpeed = 0;
+      let campaignsChecked = 0;
+
+      for (const shop of shops) {
+        const lines: string[] = [];
+
+        for (const advertiser of shop.advertisers) {
+          for (const campaign of advertiser.campaigns) {
+            // Find the latest snapshot for this campaign
+            const latestSnap = await prisma.campaignSpendSnapshot.findFirst({
+              where: { campaignId: campaign.id },
+              orderBy: { timestamp: "desc" },
+            });
+
+            if (!latestSnap) {
+              lines.push(`  • *${campaign.name}*: Chưa có dữ liệu chi tiêu.`);
+              continue;
+            }
+
+            // Find snapshot from 30 minutes ago
+            const targetTime = new Date(latestSnap.timestamp.getTime() - 30 * 60 * 1000);
+            const snap30m = await prisma.campaignSpendSnapshot.findFirst({
+              where: {
+                campaignId: campaign.id,
+                timestamp: { lte: targetTime },
+              },
+              orderBy: { timestamp: "desc" },
+            });
+
+            let spend30m = 0;
+            if (snap30m) {
+              const currDateStr = latestSnap.timestamp.toISOString().split("T")[0];
+              const prevDateStr = snap30m.timestamp.toISOString().split("T")[0];
+
+              if (currDateStr === prevDateStr) {
+                spend30m = Math.max(0, latestSnap.spend - snap30m.spend);
+              } else {
+                spend30m = latestSnap.spend;
+              }
+            } else {
+              spend30m = latestSnap.spend;
+            }
+
+            totalSpeed += spend30m;
+            campaignsChecked++;
+
+            const statusEmoji = spend30m >= 100000 ? "🟢" : "🟡";
+            const shortName = campaign.name.length > 35 ? campaign.name.slice(0, 32) + "..." : campaign.name;
+            lines.push(`  • ${statusEmoji} *${shortName}*: *${spend30m.toLocaleString("vi-VN")}đ* / 30 phút`);
+          }
+        }
+
+        if (lines.length > 0) {
+          reportText += `🏪 *Shop: ${shop.name}*\n${lines.join("\n")}\n`;
+          reportText += `───────────────────\n\n`;
+        }
+      }
+
+      reportText += `📊 *TỔNG CỘNG HỆ THỐNG* 📊\n`;
+      reportText += `⏱️ Tốc độ tiêu: *${totalSpeed.toLocaleString("vi-VN")}đ* / 30 phút\n`;
+      reportText += `🔍 Tổng số chiến dịch đang hoạt động: *${campaignsChecked}*`;
+
+      const url = `https://api.telegram.org/bot${token}/sendMessage`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: reportText,
+          parse_mode: "Markdown",
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
+
+      logger.info("Telegram spend speed report sent successfully");
+      return { success: true, message: "Gửi báo cáo tốc độ chi tiêu thành công!" };
+    } catch (error: any) {
+      const errMsg = `Gửi báo cáo tốc độ chi tiêu thất bại: ${error.message}`;
+      logger.error("Failed to send Telegram spend speed report", error);
       return { success: false, message: errMsg };
     }
   }
