@@ -22,6 +22,8 @@ function chunkMessage(text: string, limit = 4000): string[] {
   return chunks;
 }
 
+import { getVietnamDateString } from "../lib/date-utils";
+
 export class TelegramReportService {
   static async sendDailyReport(targetChatId?: string): Promise<{ success: boolean; message: string }> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -34,7 +36,7 @@ export class TelegramReportService {
     }
 
     try {
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getVietnamDateString();
       const today = new Date(todayStr);
 
       // 1. Query all active shops along with their active advertisers and today's campaign performance

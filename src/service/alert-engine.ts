@@ -8,6 +8,8 @@ import { prisma } from "../lib/db";
 import { CampaignRelaunchService } from "./relaunch";
 import { TikTokApiService } from "../lib/tiktok";
 
+import { getVietnamDate, getVietnamYesterdayDate } from "../lib/date-utils";
+
 export class AlertEngineService {
   // Evaluates performance alert rules for a specific shop
   static async evaluateShopAlerts(shopId: string): Promise<void> {
@@ -21,21 +23,20 @@ export class AlertEngineService {
 
     const unresolvedAlerts = await AlertRepository.listUnresolvedAlertsByShop(shop.id);
 
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+    const today = getVietnamDate();
+    const yesterday = getVietnamYesterdayDate();
 
     // 1. Get Campaign stats for today and yesterday
     const todayCampaigns = await CampaignRepository.getCampaignsWithStats({
       shopId: shop.id,
-      startDate: new Date(today.toISOString().split("T")[0]),
-      endDate: new Date(today.toISOString().split("T")[0]),
+      startDate: today,
+      endDate: today,
     });
 
     const yesterdayCampaigns = await CampaignRepository.getCampaignsWithStats({
       shopId: shop.id,
-      startDate: new Date(yesterday.toISOString().split("T")[0]),
-      endDate: new Date(yesterday.toISOString().split("T")[0]),
+      startDate: yesterday,
+      endDate: yesterday,
     });
 
     // Calculate aggregated metrics for ROI/GMV comparison

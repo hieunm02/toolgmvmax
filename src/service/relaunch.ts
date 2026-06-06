@@ -4,6 +4,8 @@ import { CampaignRepository } from "../repository/campaign";
 import { AlertRepository } from "../repository/alert";
 import { logger } from "../lib/logger";
 
+import { getVietnamDateString } from "../lib/date-utils";
+
 export class CampaignRelaunchService {
   static async relaunchCampaign(
     campaignId: string,
@@ -31,7 +33,7 @@ export class CampaignRelaunchService {
       const { accessToken, advertiserId } = oldCampaign.advertiser;
 
       // Check safety rules: less than 20 orders today
-      const todayStr = new Date().toISOString().split("T")[0];
+      const todayStr = getVietnamDateString();
       const reportToday = await prisma.campaignReport.findFirst({
         where: {
           campaignId: oldCampaign.id,

@@ -7,6 +7,8 @@ import { AlertEngineService } from "./alert-engine";
 import { logger } from "../lib/logger";
 import { prisma } from "../lib/db";
 
+import { getVietnamDateString } from "../lib/date-utils";
+
 export class SyncService {
   // Syncs all linked advertising accounts and their daily report data
   static async syncAllAccounts(): Promise<{ success: boolean; syncedAccounts: number; errors: any[] }> {
@@ -15,7 +17,7 @@ export class SyncService {
     let syncedAccountsCount = 0;
     const errors: any[] = [];
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getVietnamDateString();
 
     for (const advertiser of advertisers) {
       try {
