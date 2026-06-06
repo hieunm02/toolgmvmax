@@ -139,7 +139,8 @@ export class TikTokApiService {
     }
 
     try {
-      const response = await fetch(`${this.getBaseUrl()}/advertiser/info/`, {
+      const url = `${this.getBaseUrl()}/oauth2/advertiser/get/?app_id=${process.env.TIKTOK_CLIENT_ID}&secret=${process.env.TIKTOK_CLIENT_SECRET}`;
+      const response = await fetch(url, {
         headers: {
           "Access-Token": accessToken,
         },

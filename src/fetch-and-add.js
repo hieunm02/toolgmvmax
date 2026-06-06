@@ -7,7 +7,7 @@ function getAdvertiserInfo(token) {
   return new Promise((resolve, reject) => {
     const options = {
       hostname: "business-api.tiktok.com",
-      path: "/open_api/v1.3/advertiser/info/",
+      path: `/open_api/v1.3/oauth2/advertiser/get/?app_id=${process.env.TIKTOK_CLIENT_ID}&secret=${process.env.TIKTOK_CLIENT_SECRET}`,
       method: "GET",
       headers: {
         "Access-Token": token
