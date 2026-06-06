@@ -86,7 +86,10 @@ export class AlertEngineService {
       }
     }
 
-    // Rule 3: Spend exceeds threshold without orders
+    // Rule 3 (Spend exceeds threshold without orders) has been disabled to avoid redundant alerts.
+    // Since Rule 5 (Auto-relaunch) automatically handles campaigns with high spend and low/zero ROI (0 orders),
+    // Rule 3 is redundant and creates duplicate Telegram notifications.
+    /*
     const isVND = (shop.autoRelaunchMinSpend ?? 200000) > 1000;
     const spendThreshold = isVND ? (shop.autoRelaunchMinSpend ?? 200000) : 100.0;
     for (const campaign of todayCampaigns) {
@@ -106,6 +109,7 @@ export class AlertEngineService {
         await this.triggerAlert(shop.id, shop.name, "SPEND_NO_ORDERS", message, `SPEND > ${formattedThreshold} AND ORDERS == 0`, campSpend);
       }
     }
+    */
 
     // Rule 5: Automatic pause and relaunch for active campaigns with ROI < shop.autoRelaunchRoiThreshold and Spend >= shop.autoRelaunchMinSpend (with < shop.autoRelaunchMaxOrders orders)
     const roiThreshold = shop.autoRelaunchRoiThreshold ?? 3.0;
