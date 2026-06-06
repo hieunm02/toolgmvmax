@@ -87,15 +87,23 @@ export class AlertEngineService {
     }
 
     // Rule 3: Spend exceeds threshold without orders
-    const spendThreshold = 100.0; // Configurable threshold ($100)
+    const isVND = (shop.autoRelaunchMinSpend ?? 200000) > 1000;
+    const spendThreshold = isVND ? (shop.autoRelaunchMinSpend ?? 200000) : 100.0;
     for (const campaign of todayCampaigns) {
       const campSpend = campaign.reports.reduce((sum, r) => sum + r.spend, 0);
       const campOrders = campaign.reports.reduce((sum, r) => sum + r.orders, 0);
 
       if (campSpend > spendThreshold && campOrders === 0) {
-        const message = `Campaign "${campaign.name}" (${campaign.campaignId}) spent $${campSpend.toFixed(2)} with 0 orders.`;
+        const formattedSpend = isVND 
+          ? `${campSpend.toLocaleString('vi-VN')}đ` 
+          : `$${campSpend.toFixed(2)}`;
+        const formattedThreshold = isVND
+          ? `${spendThreshold.toLocaleString('vi-VN')}đ`
+          : `$${spendThreshold}`;
+
+        const message = `Campaign "${campaign.name}" (${campaign.campaignId}) spent ${formattedSpend} with 0 orders.`;
         
-        await this.triggerAlert(shop.id, shop.name, "SPEND_NO_ORDERS", message, `SPEND > $${spendThreshold} AND ORDERS == 0`, campSpend);
+        await this.triggerAlert(shop.id, shop.name, "SPEND_NO_ORDERS", message, `SPEND > ${formattedThreshold} AND ORDERS == 0`, campSpend);
       }
     }
 
