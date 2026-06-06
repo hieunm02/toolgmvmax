@@ -64,7 +64,7 @@ export class TikTokApiService {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          client_id: process.env.TIKTOK_CLIENT_ID,
+          app_id: process.env.TIKTOK_CLIENT_ID,
           secret: process.env.TIKTOK_CLIENT_SECRET,
           auth_code: authCode,
         }),
@@ -106,7 +106,7 @@ export class TikTokApiService {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          client_id: process.env.TIKTOK_CLIENT_ID,
+          app_id: process.env.TIKTOK_CLIENT_ID,
           secret: process.env.TIKTOK_CLIENT_SECRET,
           grant_type: "refresh_token",
           refresh_token: refreshToken,
