@@ -62,6 +62,9 @@ export class AlertEngineService {
       }
     }
 
+    // Rule 1 (ROI_DROP) and Rule 2 (GMV_DROP) have been disabled completely at user request
+    // to avoid redundant notifications and morning false alarms.
+    /*
     const todayROI = todaySpend > 0 ? todayGMV / todaySpend : 0;
     const yesterdayROI = yesterdaySpend > 0 ? yesterdayGMV / yesterdaySpend : 0;
 
@@ -86,6 +89,7 @@ export class AlertEngineService {
         await this.triggerAlert(shop.id, shop.name, "GMV_DROP", message, "GMV_CHANGE < -30%", gmvChange);
       }
     }
+    */
 
     // Rule 3 (Spend exceeds threshold without orders) has been disabled to avoid redundant alerts.
     // Since Rule 5 (Auto-relaunch) automatically handles campaigns with high spend and low/zero ROI (0 orders),
