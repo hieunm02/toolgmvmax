@@ -31,6 +31,53 @@ services:
       timeout: 5s
       retries: 5
 
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gmvmax-web
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+      - MOCK_TIKTOK_API=false
+      - TIKTOK_CLIENT_ID=${TIKTOK_CLIENT_ID}
+      - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - DISABLE_TELEGRAM_ALERTS=${DISABLE_TELEGRAM_ALERTS}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  cron:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gmvmax-cron
+    command: ["npx", "tsx", "src/cron-worker.ts"]
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=production
+      - MOCK_TIKTOK_API=false
+      - TIKTOK_CLIENT_ID=${TIKTOK_CLIENT_ID}
+      - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      - DISABLE_TELEGRAM_ALERTS=${DISABLE_TELEGRAM_ALERTS}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

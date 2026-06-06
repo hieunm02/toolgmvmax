@@ -26,6 +26,8 @@ model Shop {
   tiktokShopId             String       @unique
   status                   String       @default("ACTIVE")
   autoRelaunchRoiThreshold Float        @default(3.0)
+  autoRelaunchMinSpend     Float        @default(200000.0)
+  autoRelaunchMaxOrders    Int          @default(20)
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
   users                    User[]       @relation("UserShops")

@@ -422,6 +422,8 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"campaigns" | "products" | "creatives" | "alerts" | "ai" | "settings">("campaigns");
   const [selectedShop, setSelectedShop] = useState<string>("");
   const [tempRoiThreshold, setTempRoiThreshold] = useState("3.0");
+  const [tempMinSpend, setTempMinSpend] = useState("200000");
+  const [tempMaxOrders, setTempMaxOrders] = useState("20");
   const [selectedAdvertiser, setSelectedAdvertiser] = useState<string>("");
   const [dbAdvertisers, setDbAdvertisers] = useState<any[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
@@ -583,9 +585,13 @@ export default function Dashboard() {
   const [newShopName, setNewShopName] = useState("");
   const [newShopTiktokId, setNewShopTiktokId] = useState("");
   const [newShopRoi, setNewShopRoi] = useState("3.0");
+  const [newShopMinSpend, setNewShopMinSpend] = useState("200000");
+  const [newShopMaxOrders, setNewShopMaxOrders] = useState("20");
   const [editingShopId, setEditingShopId] = useState<string | null>(null);
   const [editingShopName, setEditingShopName] = useState("");
   const [editingShopRoi, setEditingShopRoi] = useState("3.0");
+  const [editingShopMinSpend, setEditingShopMinSpend] = useState("200000");
+  const [editingShopMaxOrders, setEditingShopMaxOrders] = useState("20");
 
   const handleAddShop = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -597,7 +603,9 @@ export default function Dashboard() {
         body: JSON.stringify({
           name: newShopName,
           tiktokShopId: newShopTiktokId,
-          autoRelaunchRoiThreshold: parseFloat(newShopRoi)
+          autoRelaunchRoiThreshold: parseFloat(newShopRoi),
+          autoRelaunchMinSpend: parseFloat(newShopMinSpend),
+          autoRelaunchMaxOrders: parseInt(newShopMaxOrders)
         }),
       });
       const json = await res.json();
@@ -605,6 +613,8 @@ export default function Dashboard() {
         setNewShopName("");
         setNewShopTiktokId("");
         setNewShopRoi("3.0");
+        setNewShopMinSpend("200000");
+        setNewShopMaxOrders("20");
         fetchShops();
         showToast(lang === "vi" ? "Thêm cửa hàng thành công!" : "Shop added successfully!", "success");
       } else {
@@ -625,7 +635,9 @@ export default function Dashboard() {
         body: JSON.stringify({
           id: shopId,
           name: editingShopName,
-          autoRelaunchRoiThreshold: parseFloat(editingShopRoi)
+          autoRelaunchRoiThreshold: parseFloat(editingShopRoi),
+          autoRelaunchMinSpend: parseFloat(editingShopMinSpend),
+          autoRelaunchMaxOrders: parseInt(editingShopMaxOrders)
         }),
       });
       const json = await res.json();
@@ -633,6 +645,8 @@ export default function Dashboard() {
         setEditingShopId(null);
         setEditingShopName("");
         setEditingShopRoi("3.0");
+        setEditingShopMinSpend("200000");
+        setEditingShopMaxOrders("20");
         fetchShops();
         if (selectedShop === shopId) {
           fetchAdvertisers();
@@ -966,23 +980,38 @@ export default function Dashboard() {
     fetchShops();
   }, []);
 
-  // Synchronize tempRoiThreshold when selected shop or shops list updates
+  // Synchronize temp parameters when selected shop or shops list updates
   useEffect(() => {
     if (selectedShop) {
       const currentShop = shops.find((s) => s.id === selectedShop);
       if (currentShop) {
         setTempRoiThreshold(currentShop.autoRelaunchRoiThreshold.toString());
+        setTempMinSpend((currentShop.autoRelaunchMinSpend ?? 200000).toString());
+        setTempMaxOrders((currentShop.autoRelaunchMaxOrders ?? 20).toString());
       }
     } else {
       setTempRoiThreshold("3.0");
+      setTempMinSpend("200000");
+      setTempMaxOrders("20");
     }
   }, [selectedShop, shops]);
 
   const handleSaveRoiThreshold = async () => {
     if (!selectedShop) return;
     const thresholdValue = parseFloat(tempRoiThreshold);
+    const spendValue = parseFloat(tempMinSpend);
+    const ordersValue = parseInt(tempMaxOrders);
+
     if (isNaN(thresholdValue) || thresholdValue <= 0) {
       showToast(lang === "vi" ? "Mức ROI không hợp lệ!" : "Invalid ROI threshold!", "error");
+      return;
+    }
+    if (isNaN(spendValue) || spendValue < 0) {
+      showToast(lang === "vi" ? "Mức chi tiêu tối thiểu không hợp lệ!" : "Invalid spend limit!", "error");
+      return;
+    }
+    if (isNaN(ordersValue) || ordersValue < 0) {
+      showToast(lang === "vi" ? "Số lượng đơn hàng tối đa không hợp lệ!" : "Invalid max orders!", "error");
       return;
     }
 
@@ -993,23 +1022,25 @@ export default function Dashboard() {
         body: JSON.stringify({
           id: selectedShop,
           autoRelaunchRoiThreshold: thresholdValue,
+          autoRelaunchMinSpend: spendValue,
+          autoRelaunchMaxOrders: ordersValue,
         }),
       });
       const json = await res.json();
       if (json.success) {
         showToast(
           lang === "vi"
-            ? `Đã cập nhật mức ROI tự động lên camp thành < ${thresholdValue.toFixed(1)}!`
-            : `Updated auto-relaunch ROI threshold to < ${thresholdValue.toFixed(1)}!`,
+            ? `Cấu hình tự động lên camp đã được cập nhật thành công!`
+            : `Auto-relaunch conditions successfully updated!`,
           "success"
         );
         fetchShops();
       } else {
-        showToast(json.error || "Failed to update ROI threshold", "error");
+        showToast(json.error || "Failed to update settings", "error");
       }
     } catch (err) {
       console.error(err);
-      showToast("Error updating ROI threshold", "error");
+      showToast("Error updating settings", "error");
     }
   };
 
@@ -1472,22 +1503,51 @@ export default function Dashboard() {
           </div>
 
           {selectedShop && (
-            <div className="flex items-center gap-3 bg-[#111318] border border-[#1F232B] rounded-lg px-5 py-3">
-              <span className="text-xs text-gray-300 font-medium">
-                {lang === "vi" ? "🤖 Tự động lên camp khi ROI <" : "🤖 Auto-relaunch when ROI <"}
+            <div className="flex flex-wrap items-center gap-4 bg-[#111318] border border-[#1F232B] rounded-lg px-5 py-3 shadow-sm">
+              <span className="text-xs text-indigo-400 font-bold tracking-wide flex items-center gap-1.5">
+                🤖 {lang === "vi" ? "ĐIỀU KIỆN LÊN CAMP TỰ ĐỘNG:" : "AUTO-RELAUNCH CONDITIONS:"}
               </span>
-              <input
-                type="number"
-                step="0.1"
-                min="0.1"
-                max="10"
-                value={tempRoiThreshold}
-                onChange={(e) => setTempRoiThreshold(e.target.value)}
-                className="w-14 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">ROI &lt;</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  max="10"
+                  value={tempRoiThreshold}
+                  onChange={(e) => setTempRoiThreshold(e.target.value)}
+                  className="w-14 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
+                  title={lang === "vi" ? "Mức ROI tối thiểu" : "Min ROI Threshold"}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
+                <input
+                  type="number"
+                  step="10000"
+                  min="0"
+                  value={tempMinSpend}
+                  onChange={(e) => setTempMinSpend(e.target.value)}
+                  className="w-24 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
+                  title={lang === "vi" ? "Chi tiêu tối thiểu (VND)" : "Min Spend (VND)"}
+                />
+                <span className="text-[10px] text-gray-500 font-mono">đ</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">{lang === "vi" ? "Đơn hàng <" : "Orders <"}</span>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={tempMaxOrders}
+                  onChange={(e) => setTempMaxOrders(e.target.value)}
+                  className="w-14 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
+                  title={lang === "vi" ? "Số lượng đơn hàng tối đa" : "Max Orders Safety Limit"}
+                />
+              </div>
               <button
                 onClick={handleSaveRoiThreshold}
-                className="px-3.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shadow-md shadow-indigo-600/15"
+                className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shadow-md shadow-indigo-600/15"
               >
                 {lang === "vi" ? "Lưu" : "Save"}
               </button>
@@ -2784,6 +2844,34 @@ export default function Dashboard() {
                             required
                           />
                         </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-gray-400 font-mono">
+                            {lang === "vi" ? "CHI TIÊU TỐI THIỂU (VND)" : "MIN SPEND (VND)"}
+                          </label>
+                          <input
+                            type="number"
+                            step="10000"
+                            min="0"
+                            value={newShopMinSpend}
+                            onChange={(e) => setNewShopMinSpend(e.target.value)}
+                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2 outline-none focus:border-indigo-500 transition-colors w-full font-mono"
+                            required
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-gray-400 font-mono">
+                            {lang === "vi" ? "ĐƠN HÀNG TỐI ĐA" : "MAX ORDERS LIMIT"}
+                          </label>
+                          <input
+                            type="number"
+                            step="1"
+                            min="0"
+                            value={newShopMaxOrders}
+                            onChange={(e) => setNewShopMaxOrders(e.target.value)}
+                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2 outline-none focus:border-indigo-500 transition-colors w-full font-mono"
+                            required
+                          />
+                        </div>
                       </div>
                       <button
                         type="submit"
@@ -2809,7 +2897,7 @@ export default function Dashboard() {
                               <div className="flex-1">
                                 {editingShopId === shop.id ? (
                                   <div className="flex flex-col gap-2 w-full">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-col gap-2">
                                       <input
                                         type="text"
                                         value={editingShopName}
@@ -2818,17 +2906,41 @@ export default function Dashboard() {
                                         placeholder={lang === "vi" ? "Tên cửa hàng" : "Shop Name"}
                                         autoFocus
                                       />
-                                      <div className="flex items-center gap-1.5 shrink-0">
-                                        <span className="text-[10px] text-gray-400 font-mono">ROI:</span>
-                                        <input
-                                          type="number"
-                                          step="0.1"
-                                          min="0.1"
-                                          max="10"
-                                          value={editingShopRoi}
-                                          onChange={(e) => setEditingShopRoi(e.target.value)}
-                                          className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-16 outline-none focus:border-indigo-500 text-center font-mono"
-                                        />
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className="text-[10px] text-gray-400 font-mono">ROI &lt;</span>
+                                          <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0.1"
+                                            max="10"
+                                            value={editingShopRoi}
+                                            onChange={(e) => setEditingShopRoi(e.target.value)}
+                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-14 outline-none focus:border-indigo-500 text-center font-mono"
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className="text-[10px] text-gray-400 font-mono">Spend ≥</span>
+                                          <input
+                                            type="number"
+                                            step="10000"
+                                            min="0"
+                                            value={editingShopMinSpend}
+                                            onChange={(e) => setEditingShopMinSpend(e.target.value)}
+                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-20 outline-none focus:border-indigo-500 text-center font-mono"
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          <span className="text-[10px] text-gray-400 font-mono">Orders &lt;</span>
+                                          <input
+                                            type="number"
+                                            step="1"
+                                            min="0"
+                                            value={editingShopMaxOrders}
+                                            onChange={(e) => setEditingShopMaxOrders(e.target.value)}
+                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-14 outline-none focus:border-indigo-500 text-center font-mono"
+                                          />
+                                        </div>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -2845,6 +2957,8 @@ export default function Dashboard() {
                                           setEditingShopId(null);
                                           setEditingShopName("");
                                           setEditingShopRoi("3.0");
+                                          setEditingShopMinSpend("200000");
+                                          setEditingShopMaxOrders("20");
                                         }}
                                         className="px-3 py-1 rounded bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700/30 text-[10px] font-bold uppercase transition-colors"
                                       >
@@ -2855,11 +2969,19 @@ export default function Dashboard() {
                                 ) : (
                                   <div className="flex flex-col">
                                     <span className="font-semibold text-white text-xs">{shop.name}</span>
-                                    <div className="flex items-center gap-3 mt-0.5">
+                                    <div className="flex flex-col gap-1 mt-1">
                                       <span className="text-[10px] text-gray-500 font-mono">ID: {shop.tiktokShopId}</span>
-                                      <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
-                                        {lang === "vi" ? `ROI tự động lên camp: < ${shop.autoRelaunchRoiThreshold.toFixed(1)}` : `Auto-relaunch ROI: < ${shop.autoRelaunchRoiThreshold.toFixed(1)}`}
-                                      </span>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
+                                          ROI &lt; {shop.autoRelaunchRoiThreshold.toFixed(1)}
+                                        </span>
+                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
+                                          Spend ≥ {(shop.autoRelaunchMinSpend ?? 200000).toLocaleString('vi-VN')}đ
+                                        </span>
+                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
+                                          Orders &lt; {shop.autoRelaunchMaxOrders ?? 20}
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                 )}
@@ -2872,6 +2994,8 @@ export default function Dashboard() {
                                       setEditingShopId(shop.id);
                                       setEditingShopName(shop.name);
                                       setEditingShopRoi(shop.autoRelaunchRoiThreshold.toString());
+                                      setEditingShopMinSpend((shop.autoRelaunchMinSpend ?? 200000).toString());
+                                      setEditingShopMaxOrders((shop.autoRelaunchMaxOrders ?? 20).toString());
                                     }}
                                     className="p-1.5 rounded bg-indigo-950/40 text-indigo-400 hover:bg-indigo-900/50 border border-indigo-800/20 text-[10px] font-bold uppercase transition-colors"
                                     title={lang === "vi" ? "Sửa" : "Edit"}

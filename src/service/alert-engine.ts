@@ -99,8 +99,11 @@ export class AlertEngineService {
       }
     }
 
-    // Rule 5: Automatic pause and relaunch for active campaigns with ROI < shop.autoRelaunchRoiThreshold and Spend >= 200,000 VND (with < 20 orders)
+    // Rule 5: Automatic pause and relaunch for active campaigns with ROI < shop.autoRelaunchRoiThreshold and Spend >= shop.autoRelaunchMinSpend (with < shop.autoRelaunchMaxOrders orders)
     const roiThreshold = shop.autoRelaunchRoiThreshold ?? 3.0;
+    const minSpend = shop.autoRelaunchMinSpend ?? 200000.0;
+    const maxOrders = shop.autoRelaunchMaxOrders ?? 20;
+
     for (const campaign of todayCampaigns) {
       if (campaign.status !== "CAMPAIGN_STATUS_ENABLE") continue;
 
@@ -109,17 +112,17 @@ export class AlertEngineService {
       const campRoi = campSpend > 0 ? campGmv / campSpend : 0;
       const campOrders = campaign.reports.reduce((sum, r) => sum + r.orders, 0);
 
-      if (campSpend >= 200000 && campRoi < roiThreshold) {
-        if (campOrders >= 20) continue; // Safety guard: ignore if campaign has >= 20 orders today
+      if (campSpend >= minSpend && campRoi < roiThreshold) {
+        if (campOrders >= maxOrders) continue; // Safety guard: ignore if campaign has >= maxOrders orders today
 
-        logger.info(`Auto-relaunching campaign ${campaign.campaignId} due to low ROI (${campRoi.toFixed(2)}x, threshold: ${roiThreshold.toFixed(1)}x) and spend (${campSpend.toLocaleString('vi-VN')}đ)`);
+        logger.info(`Auto-relaunching campaign ${campaign.campaignId} due to low ROI (${campRoi.toFixed(2)}x, threshold: ${roiThreshold.toFixed(1)}x), spend (${campSpend.toLocaleString('vi-VN')}đ, threshold: ${minSpend.toLocaleString('vi-VN')}đ) and orders (${campOrders}, threshold: < ${maxOrders})`);
 
         const relaunchResult = await CampaignRelaunchService.relaunchCampaign(campaign.campaignId);
 
         if (relaunchResult.success) {
           const message = `Tự động tạm dừng chiến dịch "${campaign.name}" (${campaign.campaignId}) và khởi tạo chiến dịch mới tương tự V2 (${relaunchResult.newCampaignId}) do ROI thấp: ${campRoi.toFixed(2)}x (Mức cấu hình: < ${roiThreshold.toFixed(1)}x, Chi tiêu: ${campSpend.toLocaleString('vi-VN')}đ, Đơn hàng: ${campOrders}). [CAMPAIGN_ID:${campaign.campaignId}]`;
           
-          await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", message, `ROI < ${roiThreshold.toFixed(1)} AND SPEND >= 200000 AND ORDERS < 20`, campRoi);
+          await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", message, `ROI < ${roiThreshold.toFixed(1)} AND SPEND >= ${minSpend} AND ORDERS < ${maxOrders}`, campRoi);
         } else {
           logger.error(`Failed to auto-relaunch campaign ${campaign.campaignId}: ${relaunchResult.error}`);
         }

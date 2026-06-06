@@ -37,7 +37,11 @@ function getAdvertiserInfo(token) {
 }
 
 async function main() {
-  const token = "a6f2fd380063597050009da20fc853449469111b";
+  const token = process.argv[2];
+  if (!token) {
+    console.error("Vui lòng cung cấp Access Token làm đối số! Ví dụ: docker compose exec web node src/fetch-and-add.js <ACCESS_TOKEN>");
+    process.exit(1);
+  }
   console.log("Calling TikTok API to automatically retrieve Advertiser ID associated with this token...");
 
   try {
