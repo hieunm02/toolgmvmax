@@ -77,8 +77,8 @@ export class TikTokApiService {
 
       return {
         accessToken: resData.data.access_token,
-        refreshToken: resData.data.refresh_token,
-        expiresIn: resData.data.expires_in,
+        refreshToken: resData.data.refresh_token || "sandbox_refresh_token_fallback",
+        expiresIn: resData.data.expires_in || (86400 * 30),
       };
     } catch (error) {
       logger.error("TikTok getAccessToken failed", error);
@@ -120,8 +120,8 @@ export class TikTokApiService {
 
       return {
         accessToken: resData.data.access_token,
-        refreshToken: resData.data.refresh_token,
-        expiresIn: resData.data.expires_in,
+        refreshToken: resData.data.refresh_token || "sandbox_refresh_token_fallback",
+        expiresIn: resData.data.expires_in || (86400 * 30),
       };
     } catch (error) {
       logger.error("TikTok refreshAccessToken failed", error);
