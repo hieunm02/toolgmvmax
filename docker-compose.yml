@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: gmvmaxos
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - gmvmax_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -79,5 +79,5 @@ services:
         condition: service_healthy
 
 volumes:
-  postgres_data:
+  gmvmax_postgres_data:
   redis_data:
