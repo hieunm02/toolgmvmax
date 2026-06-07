@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { AlertRepository } from "../../../repository/alert";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const alerts = await AlertRepository.getAllAlerts(50);
