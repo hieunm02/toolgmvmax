@@ -7,6 +7,13 @@ const formatVND = (value: number): string => {
   return new Intl.NumberFormat('vi-VN').format(Math.round(value)) + '₫';
 };
 
+// Format raw numeric string to thousand-separated dots display
+const formatNumberString = (value: string | number): string => {
+  const cleanValue = String(value).replace(/\D/g, "");
+  if (!cleanValue) return "";
+  return new Intl.NumberFormat('vi-VN').format(parseInt(cleanValue, 10));
+};
+
 interface SpeedResult {
   speed: "fast" | "slow" | "normal" | "no_spend";
   badgeText: string;
@@ -303,7 +310,7 @@ const CampaignSpendChart = ({ reports, budget, budgetMode, lang }: CampaignSpend
 
 const translations = {
   en: {
-    title: "GMV Max OS",
+    title: "GMV Max MH",
     subtitle: "TikTok Ads Centralized Control Room",
     allShops: "All Shops",
     syncAccounts: "Sync Accounts",
@@ -359,7 +366,7 @@ const translations = {
     applyRec: "Apply Recommendation"
   },
   vi: {
-    title: "GMV Max OS",
+    title: "GMV Max MH",
     subtitle: "Phòng Điều Khiển Trung Tâm Quảng Cáo TikTok",
     allShops: "Tất cả cửa hàng",
     syncAccounts: "Đồng bộ tài khoản",
@@ -425,6 +432,7 @@ export default function Dashboard() {
   const [tempMinSpend, setTempMinSpend] = useState("200000");
   const [tempMaxOrders, setTempMaxOrders] = useState("20");
   const [selectedAdvertiser, setSelectedAdvertiser] = useState<string>("");
+  const [isAdDropdownOpen, setIsAdDropdownOpen] = useState(false);
   const [dbAdvertisers, setDbAdvertisers] = useState<any[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
   const [sendingReport, setSendingReport] = useState<boolean>(false);
@@ -1234,7 +1242,7 @@ export default function Dashboard() {
       {/* Header */}
       <header className="border-b border-[#1F232B] bg-[#0E1015]/80 backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
         {/* Row 1 on Mobile: Logo/Title + Language/Theme */}
-        <div className="flex items-center justify-between gap-3 w-full md:w-auto">
+        <div className="flex items-center justify-between gap-3 w-full md:w-auto flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-400 flex items-center justify-center font-black text-black text-sm tracking-wider flex-shrink-0">
               GMV
@@ -1246,7 +1254,7 @@ export default function Dashboard() {
           </div>
 
           {/* Quick controls on the right (Language + Theme) on mobile, hidden on desktop */}
-          <div className="flex items-center gap-2 md:hidden">
+          <div className="flex items-center gap-2 md:hidden flex-shrink-0">
             {/* Language Selector */}
             <div className="flex bg-[#15181F] border border-[#2B303C] rounded p-0.5">
               <button
@@ -1290,129 +1298,191 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Action Controls: Dropdown and buttons */}
-        <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
-          {/* Ad Account Switcher */}
-          {dbAdvertisers.length > 0 && (
-            <div className="relative w-full sm:w-auto">
-              <select
-                value={selectedAdvertiser}
-                onChange={(e) => setSelectedAdvertiser(e.target.value)}
-                className="bg-[#15181F] text-gray-300 text-xs border border-[#2B303C] rounded px-3 py-2 cursor-pointer outline-none hover:border-indigo-500 transition-colors w-full sm:w-auto"
-              >
-                <option value="">{lang === "vi" ? "Tất cả tài khoản quảng cáo" : "All Ad Accounts"}</option>
-                {dbAdvertisers.map((adv) => (
-                  <option key={adv.id} value={adv.name}>
-                    {adv.name} ({adv.advertiserId})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Sync & Telegram buttons row */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {/* Sync Button */}
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-semibold tracking-wide transition-all ${
-                syncing
-                  ? "bg-indigo-950 text-indigo-400 cursor-not-allowed border border-indigo-800/30"
-                  : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
-              }`}
-            >
-              {syncing ? (
-                <>
-                  <svg className="animate-spin h-3 w-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        {/* Desktop Controls Group: Combines select dropdown, buttons, divider, and switcher */}
+        <div className="flex flex-col md:flex-row items-center gap-4.5 w-full md:w-auto md:ml-auto">
+          {/* Action Controls: Dropdown and buttons */}
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:w-auto">
+            {/* Ad Account Switcher */}
+            {dbAdvertisers.length > 0 && (
+              <div className="relative w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsAdDropdownOpen(!isAdDropdownOpen)}
+                  className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded-lg pl-3.5 pr-8 py-2 cursor-pointer outline-none hover:border-indigo-500/50 hover:bg-[#1C1F2A] focus:border-indigo-500 transition-all duration-200 w-full sm:w-[220px] text-left shadow-sm relative flex items-center justify-between"
+                  title={lang === "vi" ? "Chọn tài khoản quảng cáo" : "Select Ad Account"}
+                >
+                  <span className="truncate">
+                    {selectedAdvertiser 
+                      ? selectedAdvertiser 
+                      : (lang === "vi" ? "Tất cả tài khoản" : "All Ad Accounts")}
+                  </span>
+                  <svg
+                    className={`w-3.5 h-3.5 text-gray-400 absolute right-2.5 transition-transform duration-200 pointer-events-none ${
+                      isAdDropdownOpen ? "rotate-180" : ""
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    strokeWidth="2.5"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                   </svg>
-                  {t.syncing}
-                </>
-              ) : (
-                <>
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
-                  </svg>
-                  <span className="truncate">{t.syncAccounts}</span>
-                </>
-              )}
-            </button>
+                </button>
 
-            {/* Telegram Report Button */}
-            <button
-              onClick={handleSendTelegramReport}
-              disabled={sendingReport}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-semibold tracking-wide transition-all ${
-                sendingReport
-                  ? "bg-[#0b283d] text-sky-400 cursor-not-allowed border border-sky-950"
-                  : "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-600/20"
-              }`}
-            >
-              {sendingReport ? (
-                <>
-                  <svg className="animate-spin h-3 w-3 text-sky-400" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>{lang === "vi" ? "Đang gửi..." : "Sending..."}</span>
-                </>
-              ) : (
-                <>
-                  <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-1-.65-.35-1 .22-1.62.15-.15 2.7-2.48 2.75-2.7.01-.03.01-.15-.07-.22-.08-.07-.2-.05-.29-.03-.12.03-2.04 1.29-5.74 3.79-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.83-.27-1.49-.41-1.43-.87.03-.24.36-.49.98-.74 3.84-1.67 6.4-2.77 7.68-3.3 3.65-1.52 4.41-1.78 4.9-.18l.05.09c.07.13.14.3.16.48.02.13.01.27-.01.4z"/>
-                  </svg>
-                  <span className="truncate">{lang === "vi" ? "Báo cáo" : "Report"}</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* Language & Theme Switcher on Desktop (Hidden on Mobile) */}
-        <div className="hidden md:flex items-center gap-3">
-          {/* Language Selector */}
-          <div className="flex bg-[#15181F] border border-[#2B303C] rounded p-0.5">
-            <button
-              onClick={() => setLang("vi")}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded transition-colors ${
-                lang === "vi" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              VI
-            </button>
-            <button
-              onClick={() => setLang("en")}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded transition-colors ${
-                lang === "en" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              EN
-            </button>
-          </div>
-
-          {/* Theme Switcher */}
-          <button
-            onClick={() => {
-              const newTheme = theme === "dark" ? "light" : "dark";
-              setTheme(newTheme);
-              localStorage.setItem("theme", newTheme);
-            }}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#15181F] border border-[#2B303C] text-gray-400 hover:text-indigo-400 hover:border-indigo-500/50 transition-all cursor-pointer flex-shrink-0"
-            title={lang === "vi" ? "Chuyển đổi giao diện Sáng/Tối" : "Toggle Light/Dark Theme"}
-            id="theme-toggle-btn"
-          >
-            {theme === "dark" ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
+                {isAdDropdownOpen && (
+                  <>
+                    {/* Invisible overlay for close-on-click-outside */}
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setIsAdDropdownOpen(false)} 
+                    />
+                    
+                    {/* Dropdown Options list */}
+                    <div className="absolute right-0 mt-1.5 w-full sm:w-[280px] max-h-[300px] overflow-y-auto bg-[#15181F] border border-[#2B303C] rounded-lg shadow-xl z-50 py-1.5 animate-fadeIn">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedAdvertiser("");
+                          setIsAdDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-indigo-600 hover:text-white block ${
+                          selectedAdvertiser === "" 
+                            ? "bg-indigo-500/10 text-indigo-400 font-bold" 
+                            : "text-gray-300"
+                        }`}
+                      >
+                        {lang === "vi" ? "Tất cả tài khoản quảng cáo" : "All Ad Accounts"}
+                      </button>
+                      
+                      {dbAdvertisers.map((adv) => (
+                        <button
+                          key={adv.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAdvertiser(adv.name);
+                            setIsAdDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs transition-colors hover:bg-indigo-600 hover:text-white flex flex-col gap-0.5 ${
+                            selectedAdvertiser === adv.name 
+                              ? "bg-indigo-500/10 text-indigo-400 font-bold" 
+                              : "text-gray-300"
+                          }`}
+                        >
+                          <span className="truncate">{adv.name}</span>
+                          <span className="text-[9px] text-gray-500 font-mono font-normal group-hover:text-white">ID: {adv.advertiserId}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
-          </button>
+
+            {/* Sync & Telegram buttons row */}
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              {/* Sync Button */}
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all duration-250 border ${
+                  syncing
+                    ? "bg-indigo-950/40 text-indigo-400 border-indigo-900/30 cursor-not-allowed"
+                    : "bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-md shadow-indigo-600/10 hover:shadow-indigo-600/20 active:scale-[0.98] cursor-pointer"
+                }`}
+              >
+                {syncing ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3 text-indigo-450" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    {t.syncing}
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
+                    </svg>
+                    <span className="truncate text-white">{t.syncAccounts}</span>
+                  </>
+                )}
+              </button>
+
+              {/* Telegram Report Button */}
+              <button
+                onClick={handleSendTelegramReport}
+                disabled={sendingReport}
+                className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all duration-250 border ${
+                  sendingReport
+                    ? "bg-[#0b283d]/40 text-sky-400 border-sky-900/30 cursor-not-allowed"
+                    : "bg-sky-600 hover:bg-sky-500 text-white border-sky-500 shadow-md shadow-sky-600/10 hover:shadow-sky-600/20 active:scale-[0.98] cursor-pointer"
+                }`}
+              >
+                {sendingReport ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3 text-sky-450" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>{lang === "vi" ? "Đang gửi..." : "Sending..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-1-.65-.35-1 .22-1.62.15-.15 2.7-2.48 2.75-2.7.01-.03.01-.15-.07-.22-.08-.07-.2-.05-.29-.03-.12.03-2.04 1.29-5.74 3.79-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.83-.27-1.49-.41-1.43-.87.03-.24.36-.49.98-.74 3.84-1.67 6.4-2.77 7.68-3.3 3.65-1.52 4.41-1.78 4.9-.18l.05.09c.07.13.14.3.16.48.02.13.01.27-.01.4z"/>
+                    </svg>
+                    <span className="truncate text-white">{lang === "vi" ? "Báo cáo" : "Report"}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop Only: Divider and Switchers */}
+          <div className="hidden md:flex items-center gap-3">
+            <div className="h-5 w-px bg-[#1F232B]" />
+            {/* Language Selector */}
+            <div className="flex bg-[#15181F] border border-[#2B303C] rounded p-0.5">
+              <button
+                onClick={() => setLang("vi")}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded transition-colors ${
+                  lang === "vi" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                VI
+              </button>
+              <button
+                onClick={() => setLang("en")}
+                className={`px-2.5 py-1 text-[10px] font-bold rounded transition-colors ${
+                  lang === "en" ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                EN
+              </button>
+            </div>
+
+            {/* Theme Switcher */}
+            <button
+              onClick={() => {
+                const newTheme = theme === "dark" ? "light" : "dark";
+                setTheme(newTheme);
+                localStorage.setItem("theme", newTheme);
+              }}
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#15181F] border border-[#2B303C] text-gray-400 hover:text-indigo-400 hover:border-indigo-500/50 transition-all cursor-pointer flex-shrink-0"
+              title={lang === "vi" ? "Chuyển đổi giao diện Sáng/Tối" : "Toggle Light/Dark Theme"}
+              id="theme-toggle-btn"
+            >
+              {theme === "dark" ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1420,7 +1490,7 @@ export default function Dashboard() {
       <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-4 sm:py-6 flex flex-col gap-6">
 
         {/* Shop Switcher Buttons */}
-        <section className="flex flex-col gap-2.5 bg-[#111318]/50 border border-[#1F232B]/85 rounded-xl p-4.5 backdrop-blur-md relative overflow-hidden">
+        <section className="flex flex-col gap-3.5 bg-[#111318]/50 border border-[#1F232B]/85 rounded-xl p-5 backdrop-blur-md relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
             <svg className="w-24 h-24 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -1439,9 +1509,9 @@ export default function Dashboard() {
             {/* All Shops Button */}
             <button
               onClick={() => setSelectedShop("")}
-              className={`flex items-center gap-2 px-4.5 py-2.5 rounded-lg text-xs font-bold border transition-all duration-200 ${
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold border transition-all duration-200 ${
                 selectedShop === ""
-                  ? "bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white border-indigo-400/50 shadow-lg shadow-indigo-600/20 transform scale-[1.02]"
+                  ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-400/50 shadow-md shadow-indigo-500/20"
                   : "bg-[#151820]/90 hover:bg-[#1E222D] text-gray-400 hover:text-gray-200 border-[#222733] hover:border-indigo-500/30"
               }`}
             >
@@ -1454,9 +1524,9 @@ export default function Dashboard() {
               <button
                 key={shop.id}
                 onClick={() => setSelectedShop(shop.id)}
-                className={`flex items-center gap-2 px-4.5 py-2.5 rounded-lg text-xs font-bold border transition-all duration-200 ${
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-bold border transition-all duration-200 ${
                   selectedShop === shop.id
-                    ? "bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white border-indigo-400/50 shadow-lg shadow-indigo-600/20 transform scale-[1.02]"
+                    ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white border-indigo-400/50 shadow-md shadow-indigo-500/20"
                     : "bg-[#151820]/90 hover:bg-[#1E222D] text-gray-400 hover:text-gray-200 border-[#222733] hover:border-indigo-500/30"
                 }`}
               >
@@ -1467,91 +1537,115 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Global Date Picker */}
-        <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 bg-[#111318] border border-[#1F232B] rounded-lg px-5 py-3">
-            <svg className="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span className="text-xs text-gray-300 font-medium">
-              {lang === "vi" ? "Xem dữ liệu theo ngày:" : "View data for date:"}
-            </span>
-            <input
-              type="date"
-              value={selectedReportDate}
-              onChange={(e) => handleReportDateChange(e.target.value)}
-              className="bg-[#1A1D26] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-md px-3 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
-            />
-            {selectedReportDate ? (
-              <>
-                <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">
-                  {lang === "vi" ? `Đang xem: ${new Date(selectedReportDate + "T00:00:00").toLocaleDateString("vi-VN")}` : `Viewing: ${new Date(selectedReportDate + "T00:00:00").toLocaleDateString("en-US")}`}
-                </span>
-                <button
-                  onClick={() => handleReportDateChange("")}
-                  className="text-gray-500 hover:text-rose-400 transition-colors text-xs font-bold px-2 py-1 rounded hover:bg-rose-500/10"
-                  title={lang === "vi" ? "Xóa bộ lọc ngày — xem tất cả" : "Clear date filter — view all"}
-                >
-                  ✕
-                </button>
-              </>
-            ) : (
-              <span className="text-[10px] text-gray-500 font-mono">
-                {lang === "vi" ? "Tất cả ngày" : "All dates"}
+        {/* Unified Filter & Auto-Relaunch Config Bar */}
+        <section className="bg-[#111318]/45 border border-[#1F232B] rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 backdrop-blur-md">
+          {/* Date Picker */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-indigo-400">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-xs font-semibold text-gray-300">
+                {lang === "vi" ? "Xem dữ liệu theo ngày:" : "View data for date:"}
               </span>
-            )}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={selectedReportDate}
+                onChange={(e) => handleReportDateChange(e.target.value)}
+                className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-3 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
+              />
+              {selectedReportDate ? (
+                <div className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-md">
+                  <span className="text-[10px] text-indigo-400 font-mono font-medium">
+                    {lang === "vi" 
+                      ? `${new Date(selectedReportDate + "T00:00:00").toLocaleDateString("vi-VN")}` 
+                      : `${new Date(selectedReportDate + "T00:00:00").toLocaleDateString("en-US")}`}
+                  </span>
+                  <button
+                    onClick={() => handleReportDateChange("")}
+                    className="text-gray-450 hover:text-rose-450 transition-colors text-xs font-bold leading-none"
+                    title={lang === "vi" ? "Xóa bộ lọc ngày — xem tất cả" : "Clear date filter — view all"}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[10px] text-gray-500 font-mono bg-[#15181F] border border-[#2B303C]/50 px-2 py-1 rounded">
+                  {lang === "vi" ? "Tất cả ngày" : "All dates"}
+                </span>
+              )}
+            </div>
           </div>
 
           {selectedShop && (
-            <div className="flex flex-wrap items-center gap-4 bg-[#111318] border border-[#1F232B] rounded-lg px-5 py-3 shadow-sm">
-              <span className="text-xs text-indigo-400 font-bold tracking-wide flex items-center gap-1.5">
-                🤖 {lang === "vi" ? "ĐIỀU KIỆN LÊN CAMP TỰ ĐỘNG:" : "AUTO-RELAUNCH CONDITIONS:"}
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">ROI &lt;</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.1"
-                  max="10"
-                  value={tempRoiThreshold}
-                  onChange={(e) => setTempRoiThreshold(e.target.value)}
-                  className="w-14 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
-                  title={lang === "vi" ? "Mức ROI tối thiểu" : "Min ROI Threshold"}
-                />
+            <>
+              {/* Divider on desktop */}
+              <div className="hidden lg:block h-6 w-px bg-[#1F232B]" />
+
+              {/* Auto-relaunch settings */}
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-lg">
+                  <span className="text-xs">🤖</span>
+                  <span className="text-[10px] font-bold tracking-wider uppercase font-mono">
+                    {lang === "vi" ? "Lên Camp Tự Động" : "Auto-Relaunch"}
+                  </span>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* ROI Input Card */}
+                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                    <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">ROI &lt;</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="10"
+                      value={tempRoiThreshold}
+                      onChange={(e) => setTempRoiThreshold(e.target.value)}
+                      className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
+                      title={lang === "vi" ? "Mức ROI tối thiểu" : "Min ROI Threshold"}
+                    />
+                  </div>
+
+                  {/* Spend Input Card */}
+                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2.5 py-1.5">
+                    <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
+                    <input
+                      type="text"
+                      value={formatNumberString(tempMinSpend)}
+                      onChange={(e) => setTempMinSpend(e.target.value.replace(/\D/g, ""))}
+                      className="w-24 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
+                      title={lang === "vi" ? "Chi tiêu tối thiểu (VND)" : "Min Spend (VND)"}
+                    />
+                    <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
+                  </div>
+
+                  {/* Orders Input Card */}
+                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                    <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Đơn hàng <" : "Orders <"}</span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={tempMaxOrders}
+                      onChange={(e) => setTempMaxOrders(e.target.value)}
+                      className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
+                      title={lang === "vi" ? "Số lượng đơn hàng tối đa" : "Max Orders Safety Limit"}
+                    />
+                  </div>
+
+                  {/* Save Button */}
+                  <button
+                    onClick={handleSaveRoiThreshold}
+                    className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all duration-200 shadow-md shadow-indigo-600/10 active:scale-[0.98] border border-indigo-500 cursor-pointer"
+                  >
+                    {lang === "vi" ? "Lưu" : "Save"}
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
-                <input
-                  type="number"
-                  step="10000"
-                  min="0"
-                  value={tempMinSpend}
-                  onChange={(e) => setTempMinSpend(e.target.value)}
-                  className="w-24 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
-                  title={lang === "vi" ? "Chi tiêu tối thiểu (VND)" : "Min Spend (VND)"}
-                />
-                <span className="text-[10px] text-gray-500 font-mono">đ</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">{lang === "vi" ? "Đơn hàng <" : "Orders <"}</span>
-                <input
-                  type="number"
-                  step="1"
-                  min="0"
-                  value={tempMaxOrders}
-                  onChange={(e) => setTempMaxOrders(e.target.value)}
-                  className="w-14 bg-[#1A1D26] text-gray-200 text-xs text-center font-mono outline-none border border-[#2B303C] rounded px-1.5 py-1 focus:border-indigo-500 transition-colors"
-                  title={lang === "vi" ? "Số lượng đơn hàng tối đa" : "Max Orders Safety Limit"}
-                />
-              </div>
-              <button
-                onClick={handleSaveRoiThreshold}
-                className="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shadow-md shadow-indigo-600/15"
-              >
-                {lang === "vi" ? "Lưu" : "Save"}
-              </button>
-            </div>
+            </>
           )}
         </section>
 
@@ -2338,7 +2432,7 @@ export default function Dashboard() {
                                       {p.roi > 0 ? `${p.roi.toFixed(2)}x` : "-"}
                                     </span>
                                     {p.roi > 0 && (
-                                      <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded font-sans scale-[0.85] ${ratingColor}`}>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded font-sans scale-[0.85] ${ratingColor}`}>
                                         {ratingText}
                                       </span>
                                     )}
@@ -2622,7 +2716,7 @@ export default function Dashboard() {
                                       {c.roi > 0 ? `${c.roi.toFixed(2)}x` : "-"}
                                     </span>
                                     {c.roi > 0 && (
-                                      <span className={`text-[8px] font-bold px-1.5 py-0.2 rounded font-sans scale-[0.85] ${ratingColor}`}>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded font-sans scale-[0.85] ${ratingColor}`}>
                                         {ratingText}
                                       </span>
                                     )}
@@ -2849,11 +2943,9 @@ export default function Dashboard() {
                             {lang === "vi" ? "CHI TIÊU TỐI THIỂU (VND)" : "MIN SPEND (VND)"}
                           </label>
                           <input
-                            type="number"
-                            step="10000"
-                            min="0"
-                            value={newShopMinSpend}
-                            onChange={(e) => setNewShopMinSpend(e.target.value)}
+                            type="text"
+                            value={formatNumberString(newShopMinSpend)}
+                            onChange={(e) => setNewShopMinSpend(e.target.value.replace(/\D/g, ""))}
                             className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2 outline-none focus:border-indigo-500 transition-colors w-full font-mono"
                             required
                           />
@@ -2922,12 +3014,10 @@ export default function Dashboard() {
                                         <div className="flex items-center gap-1.5 shrink-0">
                                           <span className="text-[10px] text-gray-400 font-mono">Spend ≥</span>
                                           <input
-                                            type="number"
-                                            step="10000"
-                                            min="0"
-                                            value={editingShopMinSpend}
-                                            onChange={(e) => setEditingShopMinSpend(e.target.value)}
-                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-20 outline-none focus:border-indigo-500 text-center font-mono"
+                                            type="text"
+                                            value={formatNumberString(editingShopMinSpend)}
+                                            onChange={(e) => setEditingShopMinSpend(e.target.value.replace(/\D/g, ""))}
+                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-24 outline-none focus:border-indigo-500 text-center font-mono"
                                           />
                                         </div>
                                         <div className="flex items-center gap-1.5 shrink-0">
@@ -2972,13 +3062,13 @@ export default function Dashboard() {
                                     <div className="flex flex-col gap-1 mt-1">
                                       <span className="text-[10px] text-gray-500 font-mono">ID: {shop.tiktokShopId}</span>
                                       <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
+                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">
                                           ROI &lt; {shop.autoRelaunchRoiThreshold.toFixed(1)}
                                         </span>
-                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
+                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">
                                           Spend ≥ {(shop.autoRelaunchMinSpend ?? 200000).toLocaleString('vi-VN')}đ
                                         </span>
-                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.25 rounded">
+                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">
                                           Orders &lt; {shop.autoRelaunchMaxOrders ?? 20}
                                         </span>
                                       </div>
@@ -3078,13 +3168,13 @@ export default function Dashboard() {
                             </div>
                             <button
                               onClick={() => handleToggleAdvertiser(adv.advertiserId, adv.status)}
-                              className={`w-11 h-5.5 rounded-full p-0.5 transition-all duration-300 flex items-center ${
+                              className={`w-11 h-6 rounded-full p-0.5 transition-all duration-300 flex items-center ${
                                 adv.status === "ACTIVE"
                                   ? "bg-indigo-600 justify-end"
                                   : "bg-[#252833] justify-start border border-[#3E4357]/20"
                               }`}
                             >
-                              <span className="w-4.5 h-4.5 bg-white rounded-full shadow-md transition-all" />
+                              <span className="w-5 h-5 bg-white rounded-full shadow-md transition-all" />
                             </button>
                           </div>
 
