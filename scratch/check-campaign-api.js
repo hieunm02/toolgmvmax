@@ -2,7 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
-  const campaignId = "1866445091854817";
+  const campaignId = "1866445891854817";
   console.log(`=== Querying database for campaign: ${campaignId} ===`);
   
   const campaign = await prisma.campaign.findUnique({
