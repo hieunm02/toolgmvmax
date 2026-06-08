@@ -11,13 +11,13 @@ import { getVietnamDateString } from "../lib/date-utils";
 
 export class SyncService {
   // Syncs all linked advertising accounts and their daily report data
-  static async syncAllAccounts(): Promise<{ success: boolean; syncedAccounts: number; errors: any[] }> {
-    logger.info("Starting global TikTok Ads data synchronization...");
+  static async syncAllAccounts(customDate?: string): Promise<{ success: boolean; syncedAccounts: number; errors: any[] }> {
+    logger.info(`Starting global TikTok Ads data synchronization... Target Date: ${customDate || "today"}`);
     const advertisers = await ShopRepository.getAllAdvertisers();
     let syncedAccountsCount = 0;
     const errors: any[] = [];
 
-    const todayStr = getVietnamDateString();
+    const todayStr = customDate || getVietnamDateString();
 
     for (const advertiser of advertisers) {
       try {
@@ -76,15 +76,17 @@ export class SyncService {
             conversionRate: conversionRate,
           });
 
-          // Save intra-day 30-minute spend snapshot
-          await prisma.campaignSpendSnapshot.create({
-            data: {
-              campaignId: campaignRecord.id,
-              spend: camp.spend,
-              gmv: camp.gmv,
-              timestamp: new Date(),
-            },
-          });
+          // Save intra-day 30-minute spend snapshot (only for current day sync)
+          if (!customDate || customDate === getVietnamDateString()) {
+            await prisma.campaignSpendSnapshot.create({
+              data: {
+                campaignId: campaignRecord.id,
+                spend: camp.spend,
+                gmv: camp.gmv,
+                timestamp: new Date(),
+              },
+            });
+          }
         }
 
         // 2. Sync Product Performance

@@ -2,11 +2,14 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
-  const campaignId = "1866445891854817";
-  console.log(`=== Querying database for campaign: ${campaignId} ===`);
+  console.log("=== Querying database for campaign containing 'Còn lại' ===");
   
-  const campaign = await prisma.campaign.findUnique({
-    where: { campaignId },
+  const campaign = await prisma.campaign.findFirst({
+    where: {
+      name: {
+        contains: "Còn lại"
+      }
+    },
     include: {
       advertiser: {
         include: {
@@ -27,6 +30,7 @@ async function main() {
   console.log("Local Campaign Record:");
   console.log(JSON.stringify(campaign, null, 2));
 
+  const campaignId = campaign.campaignId;
   const { accessToken, advertiserId } = campaign.advertiser;
   const dates = ["2026-06-07", "2026-06-08"];
 

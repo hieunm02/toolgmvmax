@@ -275,51 +275,84 @@ export class TikTokApiService {
         const storeListData = await storeListResponse.json();
 
         if (storeListData.code === 0 && storeListData.data && storeListData.data.store_list) {
-          const storeIds = storeListData.data.store_list
-            .filter((s: any) => s.exclusive_authorized_advertiser_info?.advertiser_id === advertiserId)
-            .map((s: any) => s.store_id);
-
+          const storeIds = storeListData.data.store_list.map((s: any) => s.store_id);
           const uniqueStoreIds = Array.from(new Set(storeIds));
 
           for (const storeId of uniqueStoreIds) {
             // Compute 30 days ago for discovery report
             const startDiscoveryDate = new Date(new Date(date).getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-            // Query 30-day discovery report to find campaign IDs
+            // Query 30-day discovery report to find campaign IDs with pagination support
             const dimensions = ["campaign_id"];
             const metrics = ["roi", "orders", "cost", "gross_revenue"];
             const discoveryDimensions = JSON.stringify(dimensions);
             const discoveryMetrics = JSON.stringify(metrics);
-            const discoveryUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(discoveryDimensions)}&metrics=${encodeURIComponent(discoveryMetrics)}&start_date=${startDiscoveryDate}&end_date=${date}&page_size=100`;
 
-            const discoveryResponse = await fetch(discoveryUrl, {
-              headers: { "Access-Token": accessToken },
-            });
-            const discoveryData = await discoveryResponse.json();
+            let page = 1;
+            let totalPage = 1;
+            const gmvCampaignIdsList: string[] = [];
 
-            if (discoveryData.code === 0 && discoveryData.data && discoveryData.data.list) {
-              const gmvCampaignIds = discoveryData.data.list.map((item: any) => item.dimensions?.campaign_id).filter(Boolean);
+            do {
+              try {
+                const discoveryUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(discoveryDimensions)}&metrics=${encodeURIComponent(discoveryMetrics)}&start_date=${startDiscoveryDate}&end_date=${date}&page_size=100&page=${page}`;
 
-              if (gmvCampaignIds.length > 0) {
-                // Query today's performance report for this store ID
-                const todayReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(discoveryDimensions)}&metrics=${encodeURIComponent(discoveryMetrics)}&start_date=${date}&end_date=${date}&page_size=100`;
-
-                const todayReportResponse = await fetch(todayReportUrl, {
+                const discoveryResponse = await fetch(discoveryUrl, {
                   headers: { "Access-Token": accessToken },
                 });
-                const todayReportData = await todayReportResponse.json();
+                const discoveryData = await discoveryResponse.json();
 
-                const todayGmvMetricsMap = new Map<string, any>();
-                if (todayReportData.code === 0 && todayReportData.data && todayReportData.data.list) {
-                  for (const item of todayReportData.data.list) {
-                    const cid = item.dimensions?.campaign_id;
-                    if (cid) {
-                      todayGmvMetricsMap.set(cid, item.metrics);
-                    }
-                  }
+                if (discoveryData.code === 0 && discoveryData.data && discoveryData.data.list) {
+                  const ids = discoveryData.data.list.map((item: any) => item.dimensions?.campaign_id).filter(Boolean);
+                  gmvCampaignIdsList.push(...ids);
+                  totalPage = discoveryData.data.page_info?.total_page || 1;
+                  page++;
+                } else {
+                  logger.warn(`GMV Max discovery query failed or empty on page ${page}`, discoveryData);
+                  break;
                 }
+              } catch (discoveryErr) {
+                logger.error(`Error fetching GMV Max discovery page ${page}`, discoveryErr);
+                break;
+              }
+            } while (page <= totalPage);
 
-                // Fetch metadata for each campaign in parallel
+            const gmvCampaignIds = Array.from(new Set(gmvCampaignIdsList));
+
+            if (gmvCampaignIds.length > 0) {
+              // Query today's performance report for this store ID with pagination support
+              const todayGmvMetricsMap = new Map<string, any>();
+              let todayPage = 1;
+              let todayTotalPage = 1;
+
+              do {
+                try {
+                  const todayReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(discoveryDimensions)}&metrics=${encodeURIComponent(discoveryMetrics)}&start_date=${date}&end_date=${date}&page_size=100&page=${todayPage}`;
+
+                  const todayReportResponse = await fetch(todayReportUrl, {
+                    headers: { "Access-Token": accessToken },
+                  });
+                  const todayReportData = await todayReportResponse.json();
+
+                  if (todayReportData.code === 0 && todayReportData.data && todayReportData.data.list) {
+                    for (const item of todayReportData.data.list) {
+                      const cid = item.dimensions?.campaign_id;
+                      if (cid) {
+                        todayGmvMetricsMap.set(cid, item.metrics);
+                      }
+                    }
+                    todayTotalPage = todayReportData.data.page_info?.total_page || 1;
+                    todayPage++;
+                  } else {
+                    logger.warn(`GMV Max today report query failed or empty on page ${todayPage}`, todayReportData);
+                    break;
+                  }
+                } catch (todayReportErr) {
+                  logger.error(`Error fetching GMV Max today report page ${todayPage}`, todayReportErr);
+                  break;
+                }
+              } while (todayPage <= todayTotalPage);
+
+              // Fetch metadata for each campaign in parallel
                 const metadataPromises = gmvCampaignIds.map(async (cid: string) => {
                   try {
                     const infoUrl = `${this.getBaseUrl()}/campaign/gmv_max/info/?advertiser_id=${advertiserId}&campaign_id=${cid}`;
@@ -357,7 +390,6 @@ export class TikTokApiService {
                     gmvMaxCampaigns.push(camp);
                   }
                 }
-              }
             }
           }
         }
