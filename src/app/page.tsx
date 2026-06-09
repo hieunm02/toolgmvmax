@@ -449,6 +449,11 @@ export default function Dashboard() {
   const [campaignPage, setCampaignPage] = useState<number>(1);
   const CAMPAIGNS_PER_PAGE = 10;
 
+  // Link new account state
+  const [authCodeInput, setAuthCodeInput] = useState<string>("");
+  const [linkingAdShopId, setLinkingAdShopId] = useState<string>("");
+  const [isLinkingAccount, setIsLinkingAccount] = useState<boolean>(false);
+
   // Premium custom toast/notification state
   const [toast, setToast] = useState<{
     message: string;
@@ -659,6 +664,58 @@ export default function Dashboard() {
     } catch (err) {
       console.error(err);
       showToast("Error adding shop", "error");
+    }
+  };
+
+  const handleLinkNewAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authCodeInput.trim()) {
+      showToast(lang === "vi" ? "Vui lòng nhập Auth Code!" : "Please enter the Auth Code!", "warning");
+      return;
+    }
+    
+    // Default to first shop if none selected
+    let shopIdToUse = linkingAdShopId;
+    if (!shopIdToUse && shops.length > 0) {
+      shopIdToUse = shops[0].id;
+    }
+    
+    if (!shopIdToUse) {
+      showToast(lang === "vi" ? "Vui lòng thêm Cửa hàng trước!" : "Please add a Shop first!", "warning");
+      return;
+    }
+
+    setIsLinkingAccount(true);
+    try {
+      const res = await fetch("/api/advertisers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          authCode: authCodeInput.trim(),
+          shopId: shopIdToUse,
+        }),
+      });
+      
+      const json = await res.json();
+      if (json.success) {
+        setAuthCodeInput("");
+        showToast(
+          lang === "vi" 
+            ? `Kết nối thành công ${json.data.linkedAccounts.length} tài khoản quảng cáo!` 
+            : `Successfully connected ${json.data.linkedAccounts.length} ad accounts!`, 
+          "success"
+        );
+        // Refresh advertiser lists
+        fetchAllAdvertisers();
+        fetchAdvertisers();
+      } else {
+        showToast(json.error || "Failed to link accounts", "error");
+      }
+    } catch (err: any) {
+      console.error("Link account error:", err);
+      showToast(lang === "vi" ? "Lỗi kết nối tài khoản!" : "Failed to link accounts!", "error");
+    } finally {
+      setIsLinkingAccount(false);
     }
   };
 
@@ -1006,6 +1063,9 @@ export default function Dashboard() {
       const json = await res.json();
       if (json.success) {
         setShops(json.data);
+        if (json.data.length > 0 && !linkingAdShopId) {
+          setLinkingAdShopId(json.data[0].id);
+        }
       }
     } catch (e) {
       console.error("Failed to load shops list", e);
@@ -3137,8 +3197,76 @@ export default function Dashboard() {
                     </div>
                   </div>
                 </div>
+                {/* 2. Link Ad Account via Auth Code */}
+                <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-6 flex flex-col gap-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">
+                      {lang === "vi" ? "Kết nối Tài khoản Quảng cáo qua Auth Code" : "Link Ad Account via Auth Code"}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {lang === "vi"
+                        ? "Nhập mã Ủy quyền (Auth Code) nhận được từ TikTok Ads để tự động kết nối các tài khoản quảng cáo mới."
+                        : "Enter the Authorization Code (Auth Code) obtained from TikTok Ads to link new advertiser accounts."}
+                    </p>
+                  </div>
 
-                {/* 2. Ad Account Linking Panel */}
+                  <form onSubmit={handleLinkNewAccount} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                    <div className="flex flex-col gap-1.5 md:col-span-2">
+                      <label className="text-[10px] text-gray-400 font-mono">
+                        {lang === "vi" ? "MÃ ỦY QUYỀN (AUTH CODE)" : "AUTHORIZATION CODE (AUTH CODE)"}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={
+                          lang === "vi"
+                            ? "Dán mã Auth Code tại đây (ví dụ: 8a5d7c8d9...)"
+                            : "Paste Auth Code here (e.g., 8a5d7c8d9...)"
+                        }
+                        value={authCodeInput}
+                        onChange={(e) => setAuthCodeInput(e.target.value)}
+                        className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2.5 outline-none focus:border-indigo-500 transition-colors w-full"
+                        required
+                        disabled={isLinkingAccount}
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] text-gray-400 font-mono">
+                        {lang === "vi" ? "LIÊN KẾT VÀO SHOP" : "LINK TO SHOP"}
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={linkingAdShopId}
+                          onChange={(e) => setLinkingAdShopId(e.target.value)}
+                          className="bg-[#15181F] text-gray-300 text-xs border border-[#2B303C] rounded px-2.5 py-2.5 cursor-pointer outline-none focus:border-indigo-500 transition-colors w-full"
+                          disabled={isLinkingAccount}
+                        >
+                          {shops.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="submit"
+                          disabled={isLinkingAccount}
+                          className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white px-5 py-2.5 rounded text-xs font-bold tracking-wide transition-all whitespace-nowrap flex items-center justify-center min-w-[120px]"
+                        >
+                          {isLinkingAccount ? (
+                            <span className="flex items-center gap-1.5">
+                              <span className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
+                              {lang === "vi" ? "Đang kết nối..." : "Linking..."}
+                            </span>
+                          ) : (
+                            lang === "vi" ? "Kết nối" : "Connect"
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+
+                {/* 3. Ad Account Linking Panel */}
                 <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-6 flex flex-col gap-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-[#1F232B] pb-4 gap-4">
                     <div>
