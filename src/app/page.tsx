@@ -473,14 +473,42 @@ export default function Dashboard() {
   };
 
   const handleCopyText = (textToCopy: string, label: string) => {
-    navigator.clipboard.writeText(textToCopy)
-      .then(() => {
-        showToast(lang === "vi" ? `Đã sao chép ${label}: ${textToCopy}` : `Copied ${label}: ${textToCopy}`, "success");
-      })
-      .catch((err) => {
-        showToast(lang === "vi" ? "Lỗi khi sao chép!" : "Copy failed!", "error");
-        console.error("Clipboard copy error:", err);
-      });
+    const successMessage = lang === "vi" ? `Đã sao chép ${label}: ${textToCopy}` : `Copied ${label}: ${textToCopy}`;
+    const errorMessage = lang === "vi" ? "Lỗi khi sao chép!" : "Copy failed!";
+
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+          showToast(successMessage, "success");
+        })
+        .catch((err) => {
+          showToast(errorMessage, "error");
+          console.error("Clipboard copy error:", err);
+        });
+    } else {
+      // Fallback method for non-secure contexts (HTTP)
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = textToCopy;
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand("copy");
+        document.body.removeChild(textArea);
+        if (successful) {
+          showToast(successMessage, "success");
+        } else {
+          showToast(errorMessage, "error");
+        }
+      } catch (err) {
+        showToast(errorMessage, "error");
+        console.error("Fallback copy error:", err);
+      }
+    }
   };
 
   // Initialize theme from localStorage
