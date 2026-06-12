@@ -532,6 +532,22 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Initialize AI configurations from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedKey = localStorage.getItem("gemini_api_key");
+      if (savedKey) setGeminiApiKey(savedKey);
+      const savedHistory = localStorage.getItem("audit_history");
+      if (savedHistory) {
+        try {
+          setAuditHistory(JSON.parse(savedHistory));
+        } catch (e) {
+          console.error("Failed to parse audit history", e);
+        }
+      }
+    }
+  }, []);
+
   // Auto hide toast notifications after 4 seconds
   useEffect(() => {
     if (toast) {
@@ -569,6 +585,13 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [relaunchingId, setRelaunchingId] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+
+  // AI Diagnostic Workspace States
+  const [geminiApiKey, setGeminiApiKey] = useState<string>("");
+  const [isAuditing, setIsAuditing] = useState<boolean>(false);
+  const [auditReport, setAuditReport] = useState<string>("");
+  const [auditHistory, setAuditHistory] = useState<any[]>([]);
+  const [auditStep, setAuditStep] = useState<number>(1);
 
   const [allAdvertisers, setAllAdvertisers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -687,6 +710,219 @@ export default function Dashboard() {
       console.error(err);
       showToast("Error adding shop", "error");
     }
+  };
+
+  // Gemini AI Diagnostic Workspace handlers
+  const handleRunAiAudit = async () => {
+    if (!selectedShop) {
+      showToast(lang === "vi" ? "Vui lòng chọn một Cửa hàng để phân tích!" : "Please select a Shop to analyze!", "warning");
+      return;
+    }
+
+    setIsAuditing(true);
+    setAuditReport("");
+    setAuditStep(1);
+
+    // Dynamic step progress mock to keep the UI engaging
+    const stepInterval = setInterval(() => {
+      setAuditStep((prev) => {
+        if (prev < 4) return prev + 1;
+        return prev;
+      });
+    }, 4000);
+
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shopId: selectedShop,
+          geminiApiKey: geminiApiKey.trim() || undefined,
+        }),
+      });
+
+      const json = await response.json();
+      clearInterval(stepInterval);
+
+      if (json.success && json.data?.auditReport) {
+        const reportText = json.data.auditReport;
+        setAuditReport(reportText);
+
+        const currentShopName = shops.find((s) => s.id === selectedShop)?.name || "Shop";
+        const newAudit = {
+          id: `audit-${Date.now()}`,
+          timestamp: new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }),
+          shopId: selectedShop,
+          shopName: currentShopName,
+          report: reportText,
+        };
+
+        const updatedHistory = [newAudit, ...auditHistory].slice(0, 10);
+        setAuditHistory(updatedHistory);
+        localStorage.setItem("audit_history", JSON.stringify(updatedHistory));
+
+        showToast(lang === "vi" ? "Phân tích AI thành công!" : "AI Analysis completed successfully!", "success");
+      } else {
+        showToast(json.error || (lang === "vi" ? "Gặp lỗi khi phân tích AI!" : "Error running AI analysis!"), "error");
+      }
+    } catch (error: any) {
+      clearInterval(stepInterval);
+      console.error(error);
+      showToast(error.message || "Network Error", "error");
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
+  const handleSaveApiKey = (key: string) => {
+    setGeminiApiKey(key);
+    localStorage.setItem("gemini_api_key", key);
+    showToast(lang === "vi" ? "Đã lưu Gemini API Key!" : "Gemini API Key saved!", "success");
+  };
+
+  const handleDeleteAudit = (auditId: string) => {
+    const updated = auditHistory.filter((item) => item.id !== auditId);
+    setAuditHistory(updated);
+    localStorage.setItem("audit_history", JSON.stringify(updated));
+    const toDeleteReport = auditHistory.find((item) => item.id === auditId)?.report;
+    if (auditReport && toDeleteReport === auditReport) {
+      setAuditReport("");
+    }
+    showToast(lang === "vi" ? "Đã xóa bản ghi phân tích!" : "Audit report deleted!", "success");
+  };
+
+  // Lightweight, robust markdown + table renderer to match dark premium styling
+  const renderMarkdown = (md: string) => {
+    if (!md) return null;
+    const lines = md.split("\n");
+    const renderedElements: JSX.Element[] = [];
+
+    let currentList: string[] = [];
+    let currentTableHeaders: string[] = [];
+    let currentTableRows: string[][] = [];
+    let inTable = false;
+
+    const flushList = (key: string) => {
+      if (currentList.length > 0) {
+        renderedElements.push(
+          <ul key={`ul-${key}`} className="list-disc pl-5 my-3 space-y-1.5 text-gray-300 text-xs font-sans">
+            {currentList.map((item, idx) => (
+              <li key={`li-${key}-${idx}`} dangerouslySetInnerHTML={{ __html: item }} />
+            ))}
+          </ul>
+        );
+        currentList = [];
+      }
+    };
+
+    const flushTable = (key: string) => {
+      if (currentTableHeaders.length > 0 || currentTableRows.length > 0) {
+        renderedElements.push(
+          <div key={`table-wrapper-${key}`} className="overflow-x-auto w-full my-4 border border-[#1F232B] rounded-lg shadow-inner bg-[#111318]">
+            <table className="min-w-full text-left border-collapse text-xs font-sans">
+              <thead>
+                <tr className="bg-[#191C25] text-indigo-400 border-b border-[#2D313F]">
+                  {currentTableHeaders.map((h, idx) => (
+                    <th key={`th-${idx}`} className="px-4 py-2.5 font-semibold text-[11px] tracking-wider uppercase font-mono">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1E232F]">
+                {currentTableRows.map((row, rIdx) => (
+                  <tr key={`tr-${rIdx}`} className="hover:bg-[#1C202B]/45 transition-colors">
+                    {row.map((cell, cIdx) => (
+                      <td key={`cell-${rIdx}-${cIdx}`} className="px-4 py-2.5 text-gray-300 font-sans" dangerouslySetInnerHTML={{ __html: cell }} />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        currentTableHeaders = [];
+        currentTableRows = [];
+        inTable = false;
+      }
+    };
+
+    const formatText = (text: string): string => {
+      let formatted = text;
+      // Bold **text**
+      formatted = formatted.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      // Italic *text*
+      formatted = formatted.replace(/\*(.*?)\*/g, "<em>$1</em>");
+      // Inline code `code`
+      formatted = formatted.replace(/`(.*?)`/g, "<code class='bg-[#222733] text-indigo-300 font-mono text-[11px] px-1.5 py-0.5 rounded border border-[#2D3243]/40'>$1</code>");
+      return formatted;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Check for Table Row
+      if (line.startsWith("|") && line.endsWith("|")) {
+        flushList(`list-${i}`);
+        
+        // Check if it's table divider row (e.g., |---| or | :--- |)
+        const isDivider = line.replace(/[\s|:-]/g, "").length === 0;
+        if (isDivider) {
+          inTable = true;
+          continue;
+        }
+
+        const cells = line.split("|").slice(1, -1).map(c => formatText(c.trim()));
+        if (!inTable) {
+          currentTableHeaders = cells;
+          inTable = true;
+        } else {
+          if (currentTableHeaders.length === 0) {
+            currentTableHeaders = cells;
+          } else {
+            currentTableRows.push(cells);
+          }
+        }
+        continue;
+      } else if (inTable) {
+        flushTable(`table-${i}`);
+      }
+
+      // Check headers
+      if (line.startsWith("### ")) {
+        flushList(`list-${i}`);
+        renderedElements.push(
+          <h4 key={`h4-${i}`} className="text-xs font-bold text-indigo-400 mt-5 mb-2.5 tracking-wider uppercase font-mono flex items-center gap-1.5 border-l-2 border-indigo-500 pl-2">
+            {line.substring(4)}
+          </h4>
+        );
+      } else if (line.startsWith("## ")) {
+        flushList(`list-${i}`);
+        renderedElements.push(
+          <h3 key={`h3-${i}`} className="text-sm font-bold text-white mt-6 mb-3 border-b border-[#212635] pb-2 flex items-center gap-2">
+            {line.substring(3)}
+          </h3>
+        );
+      } else if (line.startsWith("# ")) {
+        flushList(`list-${i}`);
+        renderedElements.push(
+          <h2 key={`h2-${i}`} className="text-base font-extrabold text-white mt-8 mb-4 border-b border-[#2C3243] pb-2.5 flex items-center gap-2">
+            {line.substring(2)}
+          </h2>
+        );
+      } else if (line.startsWith("- ") || line.startsWith("* ")) {
+        currentList.push(formatText(line.substring(2)));
+      } else if (line === "") {
+        flushList(`list-${i}`);
+      } else {
+        flushList(`list-${i}`);
+        renderedElements.push(
+          <p key={`p-${i}`} className="text-xs text-gray-300 my-2 leading-relaxed font-sans" dangerouslySetInnerHTML={{ __html: formatText(line) }} />
+        );
+      }
+    }
+
+    flushList("end");
+    flushTable("end");
+    return renderedElements;
   };
 
   const handleLinkNewAccount = async (e: React.FormEvent) => {
@@ -2934,53 +3170,198 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Tab 5: AI Recommendations */}
+            {/* Tab 5: AI recommendations & Comprehensive Audit */}
             {activeTab === "ai" && (
-              <div className="bg-[#111318] border border-[#1F232B] rounded-lg overflow-hidden">
-                <div className="px-6 py-4 border-b border-[#1F232B]">
-                  <h3 className="text-sm font-semibold text-white">{t.aiEngine}</h3>
-                </div>
-                <div className="divide-y divide-[#1F232B]">
-                  {recommendations.length === 0 ? (
-                    <div className="px-6 py-12 text-center text-gray-500 font-mono">
-                      {t.noRecs}
+              <div className="flex flex-col gap-6 w-full">
+                {/* AI Configuration Bar */}
+                <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex flex-col">
+                    <h3 className="text-sm font-semibold text-white">
+                      {lang === "vi" ? "Trợ lý Phân tích AI Toàn diện (Gemini AI)" : "Comprehensive AI Audit Assistant (Gemini)"}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {lang === "vi" 
+                        ? "Đọc toàn bộ chỉ số chiến dịch, sản phẩm, video của shop để tìm vấn đề và đưa ra giải pháp tối ưu."
+                        : "Analyze all campaigns, products, and creatives of the shop to identify issues and formulate optimization actions."}
+                    </p>
+                  </div>
+                  
+                  {/* API Key settings right on the page */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-1 w-52 sm:w-64">
+                      <input
+                        type="password"
+                        placeholder={lang === "vi" ? "Nhập Gemini API Key..." : "Enter Gemini API Key..."}
+                        value={geminiApiKey}
+                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                        className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2 outline-none focus:border-indigo-500 transition-colors w-full font-mono"
+                      />
                     </div>
-                  ) : (
-                    recommendations.map((rec) => (
-                      <div key={rec.id} className="px-4 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-start justify-between gap-4 sm:gap-6 hover:bg-[#151820]/45 transition-colors">
-                        <div className="flex gap-4">
-                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${
-                            rec.action === "SCALE_BUDGET"
-                              ? "bg-emerald-950 text-emerald-400 border border-emerald-800/30"
-                              : rec.action === "REDUCE_BUDGET"
-                              ? "bg-rose-950 text-rose-400 border border-rose-800/30"
-                              : "bg-[#1E293B] text-cyan-400 border border-[#2B303C]"
-                          }`}>
-                            {rec.action === "SCALE_BUDGET" ? "📈" : rec.action === "REDUCE_BUDGET" ? "📉" : "⚡"}
+                    <button
+                      onClick={() => handleSaveApiKey(geminiApiKey)}
+                      className="px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shrink-0 shadow-md shadow-indigo-600/10"
+                    >
+                      {lang === "vi" ? "Lưu Key" : "Save Key"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start">
+                  {/* Left Main Workspace: Runs Audit & Displays Audit Report */}
+                  <div className="xl:col-span-3 flex flex-col gap-6">
+                    {/* Run Action Card */}
+                    <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-6 flex flex-col items-center justify-center text-center gap-4 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-indigo-500 via-pink-500 to-purple-500" />
+                      
+                      <div className="w-12 h-12 rounded-full bg-indigo-950/40 border border-indigo-800/30 flex items-center justify-center text-xl shadow-lg shadow-indigo-500/5">
+                        🤖
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-semibold text-white">
+                          {lang === "vi" ? "Báo cáo Phân tích Chiến dịch Shop" : "Shop Campaigns Diagnostic Audit"}
+                        </h4>
+                        <p className="text-xs text-gray-400 mt-1 max-w-lg">
+                          {lang === "vi"
+                            ? "AI sẽ quét toàn bộ dữ liệu ngày hôm nay, so sánh tỷ lệ ROI, CTR, chi tiêu ngân sách với mục tiêu của shop để phát hiện vấn đề."
+                            : "The AI will scan today's data, check ROI, CTR, budget metrics against shop configurations, and draft a professional recommendations blueprint."}
+                        </p>
+                      </div>
+
+                      {isAuditing ? (
+                        <div className="flex flex-col items-center gap-3 py-4 w-full max-w-md">
+                          <div className="flex gap-1.5 justify-center items-center">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: "300ms" }} />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-bold text-white text-xs">{rec.campaignName}</span>
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-black ${
-                                rec.priority === "HIGH"
-                                  ? "bg-red-950 text-red-400"
-                                  : rec.priority === "MEDIUM"
-                                  ? "bg-amber-950 text-amber-400"
-                                  : "bg-gray-850 text-gray-500"
-                              }`}>
-                                {rec.priority} {t.priority}
-                              </span>
-                            </div>
-                            <span className="text-[10px] text-gray-400 block font-mono mt-1">{t.action}: {rec.action} ({rec.reason})</span>
-                            <p className="text-xs text-gray-300 mt-2">{rec.details}</p>
+                          
+                          <div className="text-xs font-mono text-indigo-400 bg-indigo-950/20 px-4 py-1.5 rounded-full border border-indigo-900/40 animate-pulse">
+                            {auditStep === 1 && (lang === "vi" ? "Step 1/4: Đang kết nối cơ sở dữ liệu và tổng hợp chỉ số..." : "Step 1/4: Connecting database & aggregating metrics...")}
+                            {auditStep === 2 && (lang === "vi" ? "Step 2/4: Đang đánh giá hiệu suất ROI chiến dịch & sản phẩm..." : "Step 2/4: Computing campaign ROI & product conversion statistics...")}
+                            {auditStep === 3 && (lang === "vi" ? "Step 3/4: Đang gửi dữ liệu tới Gemini AI để phân tích..." : "Step 3/4: Transferring context payload to Gemini AI...")}
+                            {auditStep === 4 && (lang === "vi" ? "Step 4/4: Đang biên soạn giải pháp và lập kế hoạch tối ưu..." : "Step 4/4: Compiling solutions blueprint...")}
                           </div>
                         </div>
-                        <button className="px-3.5 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] tracking-wider uppercase flex-shrink-0 transition-colors">
-                          {t.applyRec}
+                      ) : (
+                        <button
+                          onClick={handleRunAiAudit}
+                          disabled={!selectedShop}
+                          className="px-6 py-3 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 disabled:from-indigo-800 disabled:to-indigo-900 text-white font-bold text-xs tracking-wider uppercase shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-2"
+                        >
+                          ✨ {lang === "vi" ? "BẮT ĐẦU CHẨN ĐOÁN AI" : "RUN AI DIAGNOSTICS"}
                         </button>
+                      )}
+                    </div>
+
+                    {/* Display Generated Report if available */}
+                    {auditReport && (
+                      <div className="bg-[#111318] border border-[#1F232B] rounded-lg overflow-hidden flex flex-col shadow-2xl">
+                        <div className="px-6 py-4 border-b border-[#1F232B] flex items-center justify-between gap-4 bg-[#14171E]">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">📋</span>
+                            <span className="text-xs font-bold font-mono tracking-wider text-indigo-400 uppercase">
+                              {lang === "vi" ? "KẾT QUẢ PHÂN TÍCH VÀ ĐỀ XUẤT" : "DIAGNOSTIC REPORT & ACTION ITEMS"}
+                            </span>
+                          </div>
+                          
+                          <button
+                            onClick={() => handleCopyText(auditReport, lang === "vi" ? "Báo cáo AI" : "AI Report")}
+                            className="px-3 py-1.5 rounded bg-[#1D202A] hover:bg-[#282C3A] border border-[#2B303C]/70 text-gray-300 hover:text-white font-bold text-[10px] tracking-wide uppercase transition-all flex items-center gap-1.5"
+                          >
+                            <span>📋</span> {lang === "vi" ? "SAO CHÉP MARKDOWN" : "COPY MARKDOWN"}
+                          </button>
+                        </div>
+                        
+                        <div className="p-6 md:p-8 overflow-y-auto max-h-[800px] prose prose-invert max-w-none divide-y divide-[#1F232B]/50">
+                          {renderMarkdown(auditReport)}
+                        </div>
                       </div>
-                    ))
-                  )}
+                    )}
+                  </div>
+
+                  {/* Right Sidebar: Past Reports List & Quick rules list */}
+                  <div className="flex flex-col gap-6">
+                    {/* Past Reports List */}
+                    <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-5 flex flex-col gap-4">
+                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-mono">
+                        {lang === "vi" ? "Lịch sử chẩn đoán" : "Diagnostic History"}
+                      </h4>
+                      
+                      <div className="flex flex-col gap-2.5 max-h-[300px] overflow-y-auto pr-1">
+                        {auditHistory.length === 0 ? (
+                          <div className="text-center py-8 text-gray-600 text-xs font-mono border border-dashed border-[#1F232B] rounded-lg">
+                            {lang === "vi" ? "Không có lịch sử chẩn đoán nào." : "No audit history recorded."}
+                          </div>
+                        ) : (
+                          auditHistory.map((item) => (
+                            <div 
+                              key={item.id} 
+                              className={`group border rounded-lg p-3 flex flex-col gap-1.5 transition-all cursor-pointer ${
+                                auditReport === item.report 
+                                  ? "bg-indigo-950/20 border-indigo-500/40 hover:bg-indigo-950/30" 
+                                  : "bg-[#15181F] border-[#1E232F] hover:bg-[#1A1E27] hover:border-gray-800"
+                              }`}
+                              onClick={() => setAuditReport(item.report)}
+                            >
+                              <div className="flex items-start justify-between gap-2 bg-transparent">
+                                <span className="font-semibold text-xs text-white truncate max-w-[130px]">
+                                  {item.shopName}
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteAudit(item.id);
+                                  }}
+                                  className="text-gray-500 hover:text-rose-400 transition-colors text-[10px] opacity-0 group-hover:opacity-100 p-0.5"
+                                  title={lang === "vi" ? "Xóa" : "Delete"}
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                              <span className="text-[10px] text-gray-500 font-mono">
+                                {item.timestamp}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quick Rules recommendations */}
+                    <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-5 flex flex-col gap-4">
+                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider font-mono">
+                        {lang === "vi" ? "Khuyến nghị nhanh dựa trên luật" : "Quick Rule Recommendations"}
+                      </h4>
+                      
+                      <div className="flex flex-col gap-3 max-h-[350px] overflow-y-auto pr-1">
+                        {recommendations.length === 0 ? (
+                          <div className="text-center py-8 text-gray-600 text-xs font-mono border border-dashed border-[#1F232B] rounded-lg">
+                            {lang === "vi" ? "Không có khuyến nghị nhanh." : "No quick recommendations."}
+                          </div>
+                        ) : (
+                          recommendations.map((rec) => (
+                            <div key={rec.id} className="bg-[#15181F] border border-[#1E232F] rounded-lg p-3.5 flex flex-col gap-2 hover:border-gray-800 transition-colors">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-bold text-white text-[10px] truncate max-w-[140px]">{rec.campaignName}</span>
+                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold shrink-0 ${
+                                  rec.priority === "HIGH"
+                                    ? "bg-red-950 text-red-400"
+                                    : rec.priority === "MEDIUM"
+                                    ? "bg-amber-950 text-amber-400"
+                                    : "bg-gray-850 text-gray-500"
+                                }`}>
+                                  {rec.priority}
+                                </span>
+                              </div>
+                              <span className="text-[9px] text-indigo-400 font-mono font-bold block">{rec.action}</span>
+                              <p className="text-[10px] text-gray-300 leading-relaxed">{rec.reason}</p>
+                              <p className="text-[9px] text-gray-500 italic leading-relaxed">{rec.details}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
