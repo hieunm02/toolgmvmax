@@ -184,8 +184,9 @@ export class AlertEngineService {
         });
 
         if (!recentIncreaseExists) {
-          const newBudget = campBudget + 500000;
-          logger.info(`Auto-increasing budget for campaign ${campaign.campaignId} by 500k to ${newBudget} due to exhaustion and ROI > 3 (${campRoi.toFixed(2)}x)`);
+          const increaseAmount = Math.round((campBudget * 0.3) / 1000) * 1000; // Increase by 30%, rounded to nearest 1,000 VND
+          const newBudget = campBudget + increaseAmount;
+          logger.info(`Auto-increasing budget for campaign ${campaign.campaignId} by 30% (+${increaseAmount.toLocaleString('vi-VN')}đ) to ${newBudget} due to exhaustion and ROI > 3 (${campRoi.toFixed(2)}x)`);
 
           try {
             const { accessToken, advertiserId } = campaign.advertiser;
@@ -203,7 +204,7 @@ export class AlertEngineService {
               data: { budget: newBudget }
             });
 
-            const message = `Tự động tăng ngân sách chiến dịch "${campaign.name}" (${campaign.campaignId}) thêm 500.000đ (Ngân sách mới: ${newBudget.toLocaleString('vi-VN')}đ) do ngân sách cũ gần hết (${campSpend.toLocaleString('vi-VN')}đ / ${campBudget.toLocaleString('vi-VN')}đ) và ROI đạt: ${campRoi.toFixed(2)}x. [CAMPAIGN_ID:${campaign.campaignId}]`;
+            const message = `Tự động tăng ngân sách chiến dịch "${campaign.name}" (${campaign.campaignId}) thêm 30% (+${increaseAmount.toLocaleString('vi-VN')}đ, Ngân sách mới: ${newBudget.toLocaleString('vi-VN')}đ) do ngân sách cũ gần hết (${campSpend.toLocaleString('vi-VN')}đ / ${campBudget.toLocaleString('vi-VN')}đ) và ROI đạt: ${campRoi.toFixed(2)}x. [CAMPAIGN_ID:${campaign.campaignId}]`;
 
             await this.triggerAlert(
               shop.id,

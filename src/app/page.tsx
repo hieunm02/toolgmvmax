@@ -28,8 +28,16 @@ const evaluateSpendSpeed = (
   reports: any[],
   budget: number,
   budgetMode: string,
-  lang: "vi" | "en"
+  lang: "vi" | "en",
+  isUsd?: boolean
 ): SpeedResult => {
+  const formatVND = (val: number): string => {
+    if (isUsd) {
+      return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+    }
+    return new Intl.NumberFormat('vi-VN').format(Math.round(val)) + '₫';
+  };
+
   const totalReports = reports.length;
   const totalSpend = reports.reduce((acc, r) => acc + r.spend, 0);
   const averageDailySpend = totalReports > 0 ? totalSpend / totalReports : 0;
@@ -541,6 +549,20 @@ export default function Dashboard() {
     averageCTR: 0,
   });
   const [campaigns, setCampaigns] = useState<any[]>([]);
+
+  // Dynamically detect currency mode (if any campaign has daily budget > 0 and < 5000)
+  const isUsdMode = React.useMemo(() => {
+    return campaigns.some((c: any) => c.budget > 0 && c.budget < 5000);
+  }, [campaigns]);
+
+  // Shadow global formatVND to format dynamically based on currency mode
+  const formatVND = (value: number): string => {
+    if (isUsdMode) {
+      return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+    }
+    return new Intl.NumberFormat('vi-VN').format(Math.round(value)) + '₫';
+  };
+
   const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
   const [productsData, setProductsData] = useState<any>({ products: [], topProducts: [], worstProducts: [] });
   const [creativesData, setCreativesData] = useState<any>({ creatives: [], topCreatives: [], worstCreatives: [] });
@@ -2122,7 +2144,8 @@ export default function Dashboard() {
                                           camp.reports || [],
                                           camp.budget,
                                           camp.budgetMode,
-                                          lang
+                                          lang,
+                                          isUsdMode
                                         );
 
                                         return (
