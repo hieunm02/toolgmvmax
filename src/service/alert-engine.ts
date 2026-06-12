@@ -170,8 +170,8 @@ export class AlertEngineService {
       const campRoi = campSpend > 0 ? campGmv / campSpend : 0;
       const campBudget = campaign.budget;
 
-      // Budget is almost exhausted: spend >= 85% of budget
-      if (campSpend >= 0.85 * campBudget && campRoi > 3.0) {
+      // Budget is almost exhausted: spend >= 60% of budget
+      if (campSpend >= 0.60 * campBudget && campRoi > 3.0) {
         // Rate-limit check: only once per 30 minutes
         const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
         const recentIncreaseExists = await prisma.alert.findFirst({
@@ -211,7 +211,7 @@ export class AlertEngineService {
               shop.name,
               "BUDGET_AUTO_INCREASED",
               message,
-              "ACTIVE_BUDGET_EXHAUSTED >= 85% AND ROI > 3.0",
+              "ACTIVE_BUDGET_EXHAUSTED >= 60% AND ROI > 3.0",
               campRoi
             );
           } catch (e: any) {

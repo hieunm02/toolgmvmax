@@ -38,10 +38,10 @@ async function main() {
     console.log(`- GMV today (DB): ${isUsd ? '$' + campGmv : campGmv.toLocaleString() + 'đ'}`);
     console.log(`- ROI today (DB): ${campRoi.toFixed(2)}x`);
 
-    // Condition 1: Spend >= 85% of budget
-    const exhaustionThreshold = 0.85 * campBudget;
+    // Condition 1: Spend >= 60% of budget
+    const exhaustionThreshold = 0.60 * campBudget;
     const isExhausted = campSpend >= exhaustionThreshold;
-    console.log(`- Condition 1 (Spend >= 85% of budget): ${isExhausted ? '✅ PASS' : '❌ FAIL'} (Spend: ${campSpend} vs Threshold: ${exhaustionThreshold.toFixed(2)})`);
+    console.log(`- Condition 1 (Spend >= 60% of budget): ${isExhausted ? '✅ PASS' : '❌ FAIL'} (Spend: ${campSpend} vs Threshold: ${exhaustionThreshold.toFixed(2)})`);
 
     // Condition 2: ROI > 3.0
     const isRoiGood = campRoi > 3.0;
