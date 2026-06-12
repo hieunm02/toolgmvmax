@@ -271,7 +271,7 @@ Nhiệm vụ của bạn:
 
 Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown chuyên nghiệp, rõ ràng, sử dụng các tiêu đề lớn, gạch đầu dòng, các bảng so sánh và biểu tượng cảm xúc (emoji) trực quan để làm nổi bật. Chú ý nhận diện chiến dịch dùng USD hay VND để định dạng ký hiệu tiền tệ thích hợp ($ hoặc đ) dựa vào mức ngân sách của chiến dịch.`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -287,8 +287,29 @@ Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown chuyên ngh
       })
     });
 
-    const json = await response.json();
+    let json = await response.json();
     
+    // Automatically fallback to the stable gemini-1.5-flash model if 2.5-flash is overloaded or fails
+    if (json.error) {
+      console.warn("Gemini 2.5 Flash failed or overloaded. Retrying with Gemini 1.5 Flash...", json.error.message || "");
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        })
+      });
+      json = await response.json();
+    }
+
     if (json.error) {
       return NextResponse.json({ success: false, error: json.error.message || "Failed to call Gemini API" }, { status: 500 });
     }
