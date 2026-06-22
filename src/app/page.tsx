@@ -336,6 +336,7 @@ const translations = {
     tabAlerts: "Anomaly Log",
     tabAi: "AI Recommendations",
     tabSettings: "Account Settings",
+    tabDocs: "User Manual",
     // Campaigns tab
     campaignName: "Campaign Name / ID",
     status: "Status",
@@ -392,6 +393,7 @@ const translations = {
     tabAlerts: "Bản Ghi Bất Thường",
     tabAi: "Khuyến Nghị AI",
     tabSettings: "Cấu hình Tài khoản",
+    tabDocs: "Hướng dẫn sử dụng",
     // Campaigns tab
     campaignName: "Tên chiến dịch / ID",
     status: "Trạng thái",
@@ -434,7 +436,7 @@ const translations = {
 export default function Dashboard() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [lang, setLang] = useState<"en" | "vi">("vi"); // Default to Vietnamese
-  const [activeTab, setActiveTab] = useState<"campaigns" | "products" | "creatives" | "alerts" | "ai" | "settings">("campaigns");
+  const [activeTab, setActiveTab] = useState<"campaigns" | "products" | "creatives" | "alerts" | "ai" | "settings" | "docs">("campaigns");
   const [selectedShop, setSelectedShop] = useState<string>("");
   const [tempRoiThreshold, setTempRoiThreshold] = useState("3.0");
   const [tempMinSpend, setTempMinSpend] = useState("200000");
@@ -449,11 +451,21 @@ export default function Dashboard() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc"); // Default sorting order (low to high as requested)
   const [gmvMaxTypeFilter, setGmvMaxTypeFilter] = useState<"ALL" | "PRODUCT" | "LIVE">("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "ACTIVE" | "PAUSED">("ALL");
-  const [selectedReportDate, setSelectedReportDate] = useState<string>(() => {
+  const getTodayString = () => {
     const d = new Date();
     const pad = (n: number) => n.toString().padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  });
+  };
+
+  const getYesterdayString = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  const [startDate, setStartDate] = useState<string>(getTodayString);
+  const [endDate, setEndDate] = useState<string>(getTodayString);
   const [campaignPage, setCampaignPage] = useState<number>(1);
   const CAMPAIGNS_PER_PAGE = 10;
 
@@ -585,6 +597,25 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [relaunchingId, setRelaunchingId] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [docsContent, setDocsContent] = useState<string>("");
+
+  // Lazy-load user manual when Hướng dẫn tab is active
+  useEffect(() => {
+    if (activeTab === "docs" && !docsContent) {
+      const fetchDocs = async () => {
+        try {
+          const res = await fetch("/api/docs");
+          const data = await res.json();
+          if (data.success) {
+            setDocsContent(data.data);
+          }
+        } catch (e) {
+          console.error("Failed to fetch user manual", e);
+        }
+      };
+      fetchDocs();
+    }
+  }, [activeTab, docsContent]);
 
   // AI Diagnostic Workspace States
   const [geminiApiKey, setGeminiApiKey] = useState<string>("");
@@ -797,15 +828,20 @@ export default function Dashboard() {
     const lines = md.split("\n");
     const renderedElements: JSX.Element[] = [];
 
+    const isLight = theme === "light";
+
     let currentList: string[] = [];
     let currentTableHeaders: string[] = [];
     let currentTableRows: string[][] = [];
     let inTable = false;
 
+    let inCodeBlock = false;
+    let codeBlockLines: string[] = [];
+
     const flushList = (key: string) => {
       if (currentList.length > 0) {
         renderedElements.push(
-          <ul key={`ul-${key}`} className="list-disc pl-5 my-3 space-y-1.5 text-gray-300 text-xs font-sans">
+          <ul key={`ul-${key}`} className={`list-disc pl-5 my-3 space-y-1.5 text-xs font-sans ${isLight ? "text-gray-700" : "text-gray-200"}`}>
             {currentList.map((item, idx) => (
               <li key={`li-${key}-${idx}`} dangerouslySetInnerHTML={{ __html: item }} />
             ))}
@@ -818,20 +854,20 @@ export default function Dashboard() {
     const flushTable = (key: string) => {
       if (currentTableHeaders.length > 0 || currentTableRows.length > 0) {
         renderedElements.push(
-          <div key={`table-wrapper-${key}`} className="overflow-x-auto w-full my-4 border border-[#1F232B] rounded-lg shadow-inner bg-[#111318]">
+          <div key={`table-wrapper-${key}`} className={`overflow-x-auto w-full my-4 border rounded-lg shadow-inner ${isLight ? "border-gray-200 bg-gray-50" : "border-[#1F232B] bg-[#111318]"}`}>
             <table className="min-w-full text-left border-collapse text-xs font-sans">
               <thead>
-                <tr className="bg-[#191C25] text-indigo-400 border-b border-[#2D313F]">
+                <tr className={`${isLight ? "bg-gray-100 text-indigo-700 border-b border-gray-200" : "bg-[#191C25] text-indigo-400 border-b border-[#2D313F]"}`}>
                   {currentTableHeaders.map((h, idx) => (
                     <th key={`th-${idx}`} className="px-4 py-2.5 font-semibold text-[11px] tracking-wider uppercase font-mono">{h}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1E232F]">
+              <tbody className={`divide-y ${isLight ? "divide-gray-200" : "divide-[#1E232F]"}`}>
                 {currentTableRows.map((row, rIdx) => (
-                  <tr key={`tr-${rIdx}`} className="hover:bg-[#1C202B]/45 transition-colors">
+                  <tr key={`tr-${rIdx}`} className={`transition-colors ${isLight ? "hover:bg-gray-200/50" : "hover:bg-[#1C202B]/45"}`}>
                     {row.map((cell, cIdx) => (
-                      <td key={`cell-${rIdx}-${cIdx}`} className="px-4 py-2.5 text-gray-300 font-sans" dangerouslySetInnerHTML={{ __html: cell }} />
+                      <td key={`cell-${rIdx}-${cIdx}`} className={`px-4 py-2.5 font-sans ${isLight ? "text-gray-800" : "text-gray-200"}`} dangerouslySetInnerHTML={{ __html: cell }} />
                     ))}
                   </tr>
                 ))}
@@ -852,12 +888,44 @@ export default function Dashboard() {
       // Italic *text*
       formatted = formatted.replace(/\*(.*?)\*/g, "<em>$1</em>");
       // Inline code `code`
-      formatted = formatted.replace(/`(.*?)`/g, "<code class='bg-[#222733] text-indigo-300 font-mono text-[11px] px-1.5 py-0.5 rounded border border-[#2D3243]/40'>$1</code>");
+      formatted = formatted.replace(/`(.*?)`/g, isLight 
+        ? "<code class='bg-gray-100 text-indigo-600 font-mono text-[11px] px-1.5 py-0.5 rounded border border-gray-200'>$1</code>"
+        : "<code class='bg-[#222733] text-indigo-300 font-mono text-[11px] px-1.5 py-0.5 rounded border border-[#2D3243]/40'>$1</code>"
+      );
       return formatted;
     };
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+      const rawLine = lines[i];
+      const line = rawLine.trim();
+
+      // Check code block boundary
+      if (line.startsWith("```")) {
+        flushList(`list-${i}`);
+        flushTable(`table-${i}`);
+        if (inCodeBlock) {
+          const codeText = codeBlockLines.join("\n");
+          renderedElements.push(
+            <pre key={`code-${i}`} className={`p-4 my-3 rounded-lg font-mono text-[11px] overflow-x-auto border ${
+              isLight 
+                ? "bg-gray-50 border-gray-200 text-gray-800" 
+                : "bg-[#0E1015]/60 border-[#1F232B] text-indigo-300"
+            }`}>
+              <code>{codeText}</code>
+            </pre>
+          );
+          inCodeBlock = false;
+          codeBlockLines = [];
+        } else {
+          inCodeBlock = true;
+        }
+        continue;
+      }
+
+      if (inCodeBlock) {
+        codeBlockLines.push(rawLine);
+        continue;
+      }
 
       // Check for Table Row
       if (line.startsWith("|") && line.endsWith("|")) {
@@ -890,21 +958,21 @@ export default function Dashboard() {
       if (line.startsWith("### ")) {
         flushList(`list-${i}`);
         renderedElements.push(
-          <h4 key={`h4-${i}`} className="text-xs font-bold text-indigo-400 mt-5 mb-2.5 tracking-wider uppercase font-mono flex items-center gap-1.5 border-l-2 border-indigo-500 pl-2">
+          <h4 key={`h4-${i}`} className={`text-xs font-bold mt-5 mb-2.5 tracking-wider uppercase font-mono flex items-center gap-1.5 border-l-2 pl-2 ${isLight ? "text-indigo-600 border-indigo-600" : "text-indigo-400 border-indigo-500"}`}>
             {line.substring(4)}
           </h4>
         );
       } else if (line.startsWith("## ")) {
         flushList(`list-${i}`);
         renderedElements.push(
-          <h3 key={`h3-${i}`} className="text-sm font-bold text-white mt-6 mb-3 border-b border-[#212635] pb-2 flex items-center gap-2">
+          <h3 key={`h3-${i}`} className={`text-sm font-bold mt-6 mb-3 border-b pb-2 flex items-center gap-2 ${isLight ? "text-gray-900 border-gray-200" : "text-white border-[#212635]"}`}>
             {line.substring(3)}
           </h3>
         );
       } else if (line.startsWith("# ")) {
         flushList(`list-${i}`);
         renderedElements.push(
-          <h2 key={`h2-${i}`} className="text-base font-extrabold text-white mt-8 mb-4 border-b border-[#2C3243] pb-2.5 flex items-center gap-2">
+          <h2 key={`h2-${i}`} className={`text-base font-extrabold mt-8 mb-4 border-b pb-2.5 flex items-center gap-2 ${isLight ? "text-gray-900 border-gray-200" : "text-white border-[#2C3243]"}`}>
             {line.substring(2)}
           </h2>
         );
@@ -915,7 +983,7 @@ export default function Dashboard() {
       } else {
         flushList(`list-${i}`);
         renderedElements.push(
-          <p key={`p-${i}`} className="text-xs text-gray-300 my-2 leading-relaxed font-sans" dangerouslySetInnerHTML={{ __html: formatText(line) }} />
+          <p key={`p-${i}`} className={`text-xs my-2 leading-relaxed font-sans ${isLight ? "text-gray-700" : "text-gray-200"}`} dangerouslySetInnerHTML={{ __html: formatText(line) }} />
         );
       }
     }
@@ -1399,16 +1467,17 @@ export default function Dashboard() {
   };
 
   // Fetch Dashboard Metrics
-  const fetchData = async (reportDate?: string, silent = false) => {
+  const fetchData = async (sDate?: string, eDate?: string, silent = false) => {
     if (!silent) setLoading(true);
     try {
+      const activeStartDate = sDate !== undefined ? sDate : startDate;
+      const activeEndDate = eDate !== undefined ? eDate : endDate;
+
       // Build shared params with optional date filter
       const baseParams = new URLSearchParams();
       if (selectedShop) baseParams.set("shopId", selectedShop);
-      if (reportDate) {
-        baseParams.set("startDate", reportDate);
-        baseParams.set("endDate", reportDate);
-      }
+      if (activeStartDate) baseParams.set("startDate", activeStartDate);
+      if (activeEndDate) baseParams.set("endDate", activeEndDate);
       const dateParam = baseParams.toString() ? `?${baseParams.toString()}` : "";
 
       // Shop-only param for APIs that don't need date filtering
@@ -1447,15 +1516,13 @@ export default function Dashboard() {
     }
   };
 
-  // Re-fetch dashboard + campaigns when report date changes
-  const fetchDataForDate = async (reportDate: string) => {
+  // Re-fetch dashboard + campaigns when report date range changes
+  const fetchDataForRange = async (sDate: string, eDate: string) => {
     try {
       const baseParams = new URLSearchParams();
       if (selectedShop) baseParams.set("shopId", selectedShop);
-      if (reportDate) {
-        baseParams.set("startDate", reportDate);
-        baseParams.set("endDate", reportDate);
-      }
+      if (sDate) baseParams.set("startDate", sDate);
+      if (eDate) baseParams.set("endDate", eDate);
       const dateParam = baseParams.toString() ? `?${baseParams.toString()}` : "";
 
       const [dashRes, campRes] = await Promise.all([
@@ -1469,28 +1536,47 @@ export default function Dashboard() {
         setCampaignPage(1);
       }
     } catch (e) {
-      console.error("Failed to load data for date", e);
+      console.error("Failed to load data for range", e);
     }
   };
 
-  const handleReportDateChange = (date: string) => {
-    setSelectedReportDate(date);
-    fetchDataForDate(date);
+  const handleStartDateChange = (val: string) => {
+    setStartDate(val);
+    fetchDataForRange(val, endDate);
+  };
+
+  const handleEndDateChange = (val: string) => {
+    setEndDate(val);
+    fetchDataForRange(startDate, val);
+  };
+
+  const handleQuickDateSelect = (type: "today" | "yesterday") => {
+    if (type === "today") {
+      const today = getTodayString();
+      setStartDate(today);
+      setEndDate(today);
+      fetchDataForRange(today, today);
+    } else if (type === "yesterday") {
+      const yesterday = getYesterdayString();
+      setStartDate(yesterday);
+      setEndDate(yesterday);
+      fetchDataForRange(yesterday, yesterday);
+    }
   };
 
   useEffect(() => {
     setSelectedAdvertiser("");
     fetchAdvertisers();
-    fetchData(selectedReportDate);
+    fetchData(startDate, endDate);
   }, [selectedShop]);
 
   // Tự động làm mới dữ liệu ngầm cứ mỗi 30 giây để cập nhật dữ liệu đồng bộ mới nhất
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchData(selectedReportDate, true);
+      fetchData(startDate, endDate, true);
     }, 30000); // 30 giây
     return () => clearInterval(interval);
-  }, [selectedShop, selectedReportDate]);
+  }, [selectedShop, startDate, endDate]);
 
   // Sync handler
   const handleSync = async () => {
@@ -1590,8 +1676,27 @@ export default function Dashboard() {
         {/* Row 1 on Mobile: Logo/Title + Language/Theme */}
         <div className="flex items-center justify-between gap-3 w-full md:w-auto flex-shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-cyan-400 flex items-center justify-center font-black text-black text-sm tracking-wider flex-shrink-0">
-              GMV
+            <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 relative group">
+              {/* Glowing shadow effect */}
+              <div className="absolute inset-0 bg-indigo-500/20 rounded-lg blur-md opacity-70 group-hover:opacity-100 transition-opacity duration-300" />
+              
+              <svg className="w-7 h-7 relative z-10 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]" viewBox="0 0 35 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="logo-inf-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#6366F1" />
+                    <stop offset="40%" stopColor="#06B6D4" />
+                    <stop offset="70%" stopColor="#10B981" />
+                    <stop offset="100%" stopColor="#3B82F6" />
+                  </linearGradient>
+                </defs>
+                <path 
+                  d="M9.5 9.5 C 5.91 9.5, 3 12.41, 3 16 C 3 19.59, 5.91 22.5, 9.5 22.5 C 13.09 22.5, 15.91 19.59, 17.5 17.5 C 19.09 19.59, 21.91 22.5, 25.5 22.5 C 29.09 22.5, 32 19.59, 32 16 C 32 12.41, 29.09 9.5, 25.5 9.5 C 21.91 9.5, 19.09 12.41, 17.5 14.5 C 15.91 12.41, 13.09 9.5, 9.5 9.5 Z" 
+                  stroke="url(#logo-inf-grad)" 
+                  strokeWidth="3.5" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                />
+              </svg>
             </div>
             <div>
               <h1 className="text-base sm:text-lg font-bold tracking-wide text-white">{t.title}</h1>
@@ -1895,32 +2000,66 @@ export default function Dashboard() {
                 {lang === "vi" ? "Xem dữ liệu theo ngày:" : "View data for date:"}
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={selectedReportDate}
-                onChange={(e) => handleReportDateChange(e.target.value)}
-                className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-3 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
-              />
-              {selectedReportDate ? (
-                <div className="flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-md">
-                  <span className="text-[10px] text-indigo-400 font-mono font-medium">
-                    {lang === "vi" 
-                      ? `${new Date(selectedReportDate + "T00:00:00").toLocaleDateString("vi-VN")}` 
-                      : `${new Date(selectedReportDate + "T00:00:00").toLocaleDateString("en-US")}`}
-                  </span>
-                  <button
-                    onClick={() => handleReportDateChange("")}
-                    className="text-gray-450 hover:text-rose-450 transition-colors text-xs font-bold leading-none"
-                    title={lang === "vi" ? "Xóa bộ lọc ngày — xem tất cả" : "Clear date filter — view all"}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <span className="text-[10px] text-gray-500 font-mono bg-[#15181F] border border-[#2B303C]/50 px-2 py-1 rounded">
-                  {lang === "vi" ? "Tất cả ngày" : "All dates"}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Start Date */}
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-gray-500 uppercase font-mono mr-1">
+                  {lang === "vi" ? "Từ" : "From"}
                 </span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => handleStartDateChange(e.target.value)}
+                  className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              {/* End Date */}
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-gray-500 uppercase font-mono mr-1">
+                  {lang === "vi" ? "Đến" : "To"}
+                </span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => handleEndDateChange(e.target.value)}
+                  className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
+                />
+              </div>
+
+              {/* Quick selectors */}
+              <div className="flex items-center gap-1.5 ml-1">
+                <button
+                  onClick={() => handleQuickDateSelect("today")}
+                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${
+                    startDate === getTodayString() && endDate === getTodayString()
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/10"
+                      : "bg-[#15181F] text-gray-400 hover:text-gray-200 border-[#2B303C] hover:border-indigo-500/30"
+                  }`}
+                >
+                  {lang === "vi" ? "Hôm nay" : "Today"}
+                </button>
+                <button
+                  onClick={() => handleQuickDateSelect("yesterday")}
+                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${
+                    startDate === getYesterdayString() && endDate === getYesterdayString()
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/10"
+                      : "bg-[#15181F] text-gray-400 hover:text-gray-200 border-[#2B303C] hover:border-indigo-500/30"
+                  }`}
+                >
+                  {lang === "vi" ? "Hôm qua" : "Yesterday"}
+                </button>
+              </div>
+
+              {/* Status Badge */}
+              {(startDate || endDate) && (
+                <div className="flex items-center gap-1 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-md ml-1">
+                  <span className="text-[9px] text-indigo-400 font-mono font-medium">
+                    {startDate ? (lang === "vi" ? `${new Date(startDate + "T00:00:00").toLocaleDateString("vi-VN")}` : `${new Date(startDate + "T00:00:00").toLocaleDateString("en-US")}`) : "..."}
+                    {" - "}
+                    {endDate ? (lang === "vi" ? `${new Date(endDate + "T00:00:00").toLocaleDateString("vi-VN")}` : `${new Date(endDate + "T00:00:00").toLocaleDateString("en-US")}`) : "..."}
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -2109,11 +2248,12 @@ export default function Dashboard() {
           <div className="flex gap-1 overflow-x-auto max-w-full no-scrollbar whitespace-nowrap">
             {[
               { id: "campaigns", label: t.tabCampaigns },
-              { id: "products", label: t.tabProducts },
+              // { id: "products", label: t.tabProducts },
               { id: "creatives", label: t.tabCreatives },
               { id: "alerts", label: `${t.tabAlerts} (${alerts.filter(a => a.status === "UNRESOLVED").length})` },
               { id: "ai", label: t.tabAi },
               { id: "settings", label: t.tabSettings },
+              { id: "docs", label: t.tabDocs },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -3760,6 +3900,44 @@ export default function Dashboard() {
                         </div>
                       ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "docs" && (
+              <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-6 md:p-8 animate-fadeIn shadow-sm">
+                <div className="flex items-center justify-between border-b border-[#1F232B] pb-4 mb-6">
+                  <div>
+                    <h2 className="text-lg font-bold text-white">
+                      {lang === "vi" ? "HƯỚNG DẪN SỬ DỤNG HỆ THỐNG" : "SYSTEM USER MANUAL"}
+                    </h2>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {lang === "vi" 
+                        ? "Tài liệu hướng dẫn cài đặt, thiết lập tự động hóa và xử lý sự cố." 
+                        : "Documentation for setup, automation rules, and troubleshooting."}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleCopyText(docsContent, lang === "vi" ? "Tài liệu hướng dẫn" : "User Manual")}
+                    className="px-3 py-1.5 bg-[#15181F] border border-[#2B303C] hover:border-indigo-500 rounded text-xs font-semibold text-gray-300 transition-all flex items-center gap-1.5 select-none"
+                  >
+                    <span>📋</span> {lang === "vi" ? "SAO CHÉP" : "COPY"}
+                  </button>
+                </div>
+                <div className="max-w-none text-gray-200 leading-relaxed">
+                  {docsContent ? (
+                    renderMarkdown(docsContent)
+                  ) : (
+                    <div className="py-20 flex flex-col items-center justify-center gap-3">
+                      <svg className="animate-spin h-8 w-8 text-indigo-500" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span className="text-xs text-gray-400 font-mono">
+                        {lang === "vi" ? "Đang tải tài liệu hướng dẫn..." : "Loading manual..."}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

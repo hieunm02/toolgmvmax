@@ -462,7 +462,7 @@ export class TikTokApiService {
         {
           videoId: "VID301",
           name: "Unboxing Hoodies Trend - TikTok Viral",
-          videoUrl: "https://www.tiktok.com/play/301",
+          videoUrl: "https://www.tiktok.com/@tiktok/video/7106351052672322862",
           spend: 150.0,
           gmv: 780.0,
           orders: 28,
@@ -472,7 +472,7 @@ export class TikTokApiService {
         {
           videoId: "VID302",
           name: "ANC Earbuds Gym Test & Water Resistance",
-          videoUrl: "https://www.tiktok.com/play/302",
+          videoUrl: "https://www.tiktok.com/@tiktok/video/7097241270275329326",
           spend: 210.0,
           gmv: 440.0,
           orders: 14,
@@ -482,7 +482,7 @@ export class TikTokApiService {
         {
           videoId: "VID303",
           name: "Leather Wallet Minimal Aesthetic ASMR",
-          videoUrl: "https://www.tiktok.com/play/303",
+          videoUrl: "https://www.tiktok.com/@tiktok/video/7109252352220450094",
           spend: 90.0,
           gmv: 10.0, // Low conversion/ROI creative
           orders: 1,
