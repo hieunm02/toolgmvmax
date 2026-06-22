@@ -1989,7 +1989,7 @@ export default function Dashboard() {
         </section>
 
         {/* Unified Filter & Auto-Relaunch Config Bar */}
-        <section className="bg-[#111318]/45 border border-[#1F232B] rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4 backdrop-blur-md">
+        <section className="bg-[#111318]/45 border border-[#1F232B] rounded-xl p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4 backdrop-blur-md">
           {/* Date Picker */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 text-indigo-400">
@@ -2067,10 +2067,10 @@ export default function Dashboard() {
           {selectedShop && (
             <>
               {/* Divider on desktop */}
-              <div className="hidden lg:block h-6 w-px bg-[#1F232B]" />
+              <div className="hidden xl:block h-6 w-px bg-[#1F232B]" />
 
               {/* Auto-relaunch settings */}
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
                 <div className="flex items-center gap-2 px-2.5 py-1.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-lg">
                   <span className="text-xs">🤖</span>
                   <span className="text-[10px] font-bold tracking-wider uppercase font-mono">
@@ -2078,57 +2078,55 @@ export default function Dashboard() {
                   </span>
                 </div>
                 
-                <div className="flex flex-wrap items-center gap-3">
-                  {/* ROI Input Card */}
-                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                    <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">ROI &lt;</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="10"
-                      value={tempRoiThreshold}
-                      onChange={(e) => setTempRoiThreshold(e.target.value)}
-                      className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
-                      title={lang === "vi" ? "Mức ROI tối thiểu" : "Min ROI Threshold"}
-                    />
-                  </div>
-
-                  {/* Spend Input Card */}
-                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2.5 py-1.5">
-                    <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
-                    <input
-                      type="text"
-                      value={formatNumberString(tempMinSpend)}
-                      onChange={(e) => setTempMinSpend(e.target.value.replace(/\D/g, ""))}
-                      className="w-24 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
-                      title={lang === "vi" ? "Chi tiêu tối thiểu (VND)" : "Min Spend (VND)"}
-                    />
-                    <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
-                  </div>
-
-                  {/* Orders Input Card */}
-                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                    <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Đơn hàng <" : "Orders <"}</span>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      value={tempMaxOrders}
-                      onChange={(e) => setTempMaxOrders(e.target.value)}
-                      className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
-                      title={lang === "vi" ? "Số lượng đơn hàng tối đa" : "Max Orders Safety Limit"}
-                    />
-                  </div>
-
-                  {/* Save Button */}
-                  <button
-                    onClick={handleSaveRoiThreshold}
-                    className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all duration-200 shadow-md shadow-indigo-600/10 active:scale-[0.98] border border-indigo-500 cursor-pointer"
-                  >
-                    {lang === "vi" ? "Lưu" : "Save"}
-                  </button>
+                {/* ROI Input Card */}
+                <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                  <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">ROI &lt;</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    max="10"
+                    value={tempRoiThreshold}
+                    onChange={(e) => setTempRoiThreshold(e.target.value)}
+                    className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
+                    title={lang === "vi" ? "Mức ROI tối thiểu" : "Min ROI Threshold"}
+                  />
                 </div>
+
+                {/* Spend Input Card */}
+                <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2.5 py-1.5">
+                  <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
+                  <input
+                    type="text"
+                    value={formatNumberString(tempMinSpend)}
+                    onChange={(e) => setTempMinSpend(e.target.value.replace(/\D/g, ""))}
+                    className="w-24 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
+                    title={lang === "vi" ? "Chi tiêu tối thiểu (VND)" : "Min Spend (VND)"}
+                  />
+                  <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
+                </div>
+
+                {/* Orders Input Card */}
+                <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                  <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Đơn hàng <" : "Orders <"}</span>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={tempMaxOrders}
+                    onChange={(e) => setTempMaxOrders(e.target.value)}
+                    className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
+                    title={lang === "vi" ? "Số lượng đơn hàng tối đa" : "Max Orders Safety Limit"}
+                  />
+                </div>
+
+                {/* Save Button */}
+                <button
+                  onClick={handleSaveRoiThreshold}
+                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all duration-200 shadow-md shadow-indigo-600/10 active:scale-[0.98] border border-indigo-500 cursor-pointer"
+                >
+                  {lang === "vi" ? "Lưu" : "Save"}
+                </button>
               </div>
             </>
           )}
