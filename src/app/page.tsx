@@ -2123,7 +2123,7 @@ export default function Dashboard() {
                         {/* Save Button */}
                         <button
                           onClick={() => {
-                            handleUpdateShopSettings();
+                            handleSaveRoiThreshold();
                             setIsRelaunchConfigOpen(false);
                           }}
                           className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all duration-200 shadow-md shadow-indigo-600/10 active:scale-[0.98] border border-indigo-500 cursor-pointer"
