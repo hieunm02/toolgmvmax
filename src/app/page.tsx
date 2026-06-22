@@ -467,6 +467,8 @@ export default function Dashboard() {
   const [startDate, setStartDate] = useState<string>(getTodayString);
   const [endDate, setEndDate] = useState<string>(getTodayString);
   const [campaignPage, setCampaignPage] = useState<number>(1);
+  const [isRelaunchConfigOpen, setIsRelaunchConfigOpen] = useState<boolean>(false);
+  const [isFilterBarOpen, setIsFilterBarOpen] = useState<boolean>(false);
   const CAMPAIGNS_PER_PAGE = 10;
 
   // Link new account state
@@ -1988,147 +1990,188 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Unified Filter & Auto-Relaunch Config Bar */}
-        <section className="bg-[#111318]/45 border border-[#1F232B] rounded-xl p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4 backdrop-blur-md">
-          {/* Date Picker */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-indigo-400">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span className="text-xs font-semibold text-gray-300">
-                {lang === "vi" ? "Xem dữ liệu theo ngày:" : "View data for date:"}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Start Date */}
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-gray-500 uppercase font-mono mr-1">
-                  {lang === "vi" ? "Từ" : "From"}
+        {/* Compact Collapsible Filter & Config Bar */}
+        <section className="bg-[#111318]/45 border border-[#1F232B] rounded-xl backdrop-blur-md relative z-[100] overflow-visible">
+          {/* Collapsed Summary Bar - always visible */}
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+            {/* Left: Filter toggle + date summary + quick selectors */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsFilterBarOpen(!isFilterBarOpen)}
+                className="flex items-center gap-2 group cursor-pointer select-none"
+              >
+                <div className={`flex items-center justify-center w-7 h-7 rounded-lg border transition-all ${
+                  isFilterBarOpen
+                    ? "bg-indigo-600/20 border-indigo-500 text-indigo-400"
+                    : "bg-[#15181F] border-[#2B303C] text-gray-400 group-hover:border-indigo-500/30 group-hover:text-gray-200"
+                }`}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <span className="text-xs font-semibold text-gray-300">
+                  {lang === "vi" ? "Bộ lọc" : "Filters"}
                 </span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => handleStartDateChange(e.target.value)}
-                  className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
-                />
-              </div>
-
-              {/* End Date */}
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-gray-500 uppercase font-mono mr-1">
-                  {lang === "vi" ? "Đến" : "To"}
-                </span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => handleEndDateChange(e.target.value)}
-                  className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
-                />
-              </div>
-
-              {/* Quick selectors */}
-              <div className="flex items-center gap-1.5 ml-1">
-                <button
-                  onClick={() => handleQuickDateSelect("today")}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${
-                    startDate === getTodayString() && endDate === getTodayString()
-                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/10"
-                      : "bg-[#15181F] text-gray-400 hover:text-gray-200 border-[#2B303C] hover:border-indigo-500/30"
-                  }`}
-                >
-                  {lang === "vi" ? "Hôm nay" : "Today"}
-                </button>
-                <button
-                  onClick={() => handleQuickDateSelect("yesterday")}
-                  className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${
-                    startDate === getYesterdayString() && endDate === getYesterdayString()
-                      ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/10"
-                      : "bg-[#15181F] text-gray-400 hover:text-gray-200 border-[#2B303C] hover:border-indigo-500/30"
-                  }`}
-                >
-                  {lang === "vi" ? "Hôm qua" : "Yesterday"}
-                </button>
-              </div>
-
-              {/* Status Badge */}
-              {(startDate || endDate) && (
-                <div className="flex items-center gap-1 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-md ml-1">
+                <div className="flex items-center gap-1 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-md">
                   <span className="text-[9px] text-indigo-400 font-mono font-medium">
                     {startDate ? (lang === "vi" ? `${new Date(startDate + "T00:00:00").toLocaleDateString("vi-VN")}` : `${new Date(startDate + "T00:00:00").toLocaleDateString("en-US")}`) : "..."}
-                    {" - "}
+                    {" → "}
                     {endDate ? (lang === "vi" ? `${new Date(endDate + "T00:00:00").toLocaleDateString("vi-VN")}` : `${new Date(endDate + "T00:00:00").toLocaleDateString("en-US")}`) : "..."}
                   </span>
                 </div>
+                <span className={`text-[8px] transition-transform duration-200 ${isFilterBarOpen ? "rotate-180" : ""} text-gray-500`}>▼</span>
+              </button>
+
+              {/* Quick date selectors — left side, always visible */}
+              <div className="h-5 w-px bg-[#1F232B] mx-1" />
+              <button
+                onClick={() => handleQuickDateSelect("today")}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${
+                  startDate === getTodayString() && endDate === getTodayString()
+                    ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/10"
+                    : "bg-[#15181F] text-gray-400 hover:text-gray-200 border-[#2B303C] hover:border-indigo-500/30"
+                }`}
+              >
+                {lang === "vi" ? "Hôm nay" : "Today"}
+              </button>
+              <button
+                onClick={() => handleQuickDateSelect("yesterday")}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${
+                  startDate === getYesterdayString() && endDate === getYesterdayString()
+                    ? "bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/10"
+                    : "bg-[#15181F] text-gray-400 hover:text-gray-200 border-[#2B303C] hover:border-indigo-500/30"
+                }`}
+              >
+                {lang === "vi" ? "Hôm qua" : "Yesterday"}
+              </button>
+            </div>
+
+            {/* Right: Auto-relaunch only */}
+            <div className="flex items-center gap-2">
+
+              {/* Auto-relaunch toggle */}
+              {selectedShop && (
+                <>
+                  <div className="h-5 w-px bg-[#1F232B]" />
+                  <div className="relative">
+                    <button
+                      onClick={() => setIsRelaunchConfigOpen(!isRelaunchConfigOpen)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all select-none text-[10px] font-bold tracking-wider uppercase font-mono ${
+                        isRelaunchConfigOpen
+                          ? "bg-indigo-600/20 text-indigo-400 border-indigo-500 shadow-md shadow-indigo-500/10"
+                          : "bg-[#15181F] text-gray-400 hover:text-gray-200 border-[#2B303C] hover:border-indigo-500/30"
+                      }`}
+                    >
+                      <span className="text-xs">🤖</span>
+                      <span className="hidden sm:inline">{lang === "vi" ? "Lên Camp Tự Động" : "Auto-Relaunch"}</span>
+                      <span className="sm:hidden">{lang === "vi" ? "Auto" : "Auto"}</span>
+                      <span className="text-[8px] opacity-75">{isRelaunchConfigOpen ? "▲" : "▼"}</span>
+                    </button>
+
+                    {/* Auto-relaunch Dropdown Popover */}
+                    {isRelaunchConfigOpen && (
+                      <div className="absolute right-0 top-full mt-2 z-[200] bg-[#111318] border border-[#1F232B] rounded-xl p-5 shadow-2xl flex flex-col gap-4 min-w-[300px] animate-slideDown backdrop-blur-md">
+                        <h4 className="text-[11px] font-bold tracking-wider uppercase font-mono text-indigo-400 border-b border-[#1F232B] pb-2">
+                          {lang === "vi" ? "CẤU HÌNH LÊN CAMP TỰ ĐỘNG" : "AUTO-RELAUNCH CONFIG"}
+                        </h4>
+                        
+                        {/* ROI Input */}
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Ngưỡng ROI <" : "Min ROI <"}</span>
+                          <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                            <input
+                              type="number"
+                              step="0.1"
+                              min="0.1"
+                              max="10"
+                              value={tempRoiThreshold}
+                              onChange={(e) => setTempRoiThreshold(e.target.value)}
+                              className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Spend Input */}
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
+                          <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2 py-1.5">
+                            <input
+                              type="text"
+                              value={formatNumberString(tempMinSpend)}
+                              onChange={(e) => setTempMinSpend(e.target.value.replace(/\D/g, ""))}
+                              className="w-20 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                            />
+                            <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
+                          </div>
+                        </div>
+
+                        {/* Orders Input */}
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Lượng đơn <" : "Orders <"}</span>
+                          <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={tempMaxOrders}
+                              onChange={(e) => setTempMaxOrders(e.target.value)}
+                              className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Save Button */}
+                        <button
+                          onClick={() => {
+                            handleUpdateShopSettings();
+                            setIsRelaunchConfigOpen(false);
+                          }}
+                          className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all duration-200 shadow-md shadow-indigo-600/10 active:scale-[0.98] border border-indigo-500 cursor-pointer"
+                        >
+                          {lang === "vi" ? "Lưu cấu hình" : "Save settings"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
 
-          {selectedShop && (
-            <>
-              {/* Divider on desktop */}
-              <div className="hidden xl:block h-6 w-px bg-[#1F232B]" />
-
-              {/* Auto-relaunch settings */}
-              <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-lg">
-                  <span className="text-xs">🤖</span>
-                  <span className="text-[10px] font-bold tracking-wider uppercase font-mono">
-                    {lang === "vi" ? "Lên Camp Tự Động" : "Auto-Relaunch"}
+          {/* Expanded Date Picker Panel */}
+          {isFilterBarOpen && (
+            <div className="border-t border-[#1F232B] px-4 py-3 animate-slideDown">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                  {lang === "vi" ? "Khoảng thời gian:" : "Date range:"}
+                </span>
+                {/* Start Date */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-gray-500 uppercase font-mono">
+                    {lang === "vi" ? "Từ" : "From"}
                   </span>
-                </div>
-                
-                {/* ROI Input Card */}
-                <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                  <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">ROI &lt;</span>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="10"
-                    value={tempRoiThreshold}
-                    onChange={(e) => setTempRoiThreshold(e.target.value)}
-                    className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
-                    title={lang === "vi" ? "Mức ROI tối thiểu" : "Min ROI Threshold"}
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => handleStartDateChange(e.target.value)}
+                    className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
                   />
                 </div>
 
-                {/* Spend Input Card */}
-                <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2.5 py-1.5">
-                  <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
+                {/* End Date */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-gray-500 uppercase font-mono">
+                    {lang === "vi" ? "Đến" : "To"}
+                  </span>
                   <input
-                    type="text"
-                    value={formatNumberString(tempMinSpend)}
-                    onChange={(e) => setTempMinSpend(e.target.value.replace(/\D/g, ""))}
-                    className="w-24 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
-                    title={lang === "vi" ? "Chi tiêu tối thiểu (VND)" : "Min Spend (VND)"}
-                  />
-                  <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
-                </div>
-
-                {/* Orders Input Card */}
-                <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                  <span className="text-[10px] text-gray-500 font-mono uppercase font-bold mr-2">{lang === "vi" ? "Đơn hàng <" : "Orders <"}</span>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={tempMaxOrders}
-                    onChange={(e) => setTempMaxOrders(e.target.value)}
-                    className="w-10 bg-transparent text-white text-xs font-mono font-bold outline-none text-center"
-                    title={lang === "vi" ? "Số lượng đơn hàng tối đa" : "Max Orders Safety Limit"}
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => handleEndDateChange(e.target.value)}
+                    className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
                   />
                 </div>
-
-                {/* Save Button */}
-                <button
-                  onClick={handleSaveRoiThreshold}
-                  className="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all duration-200 shadow-md shadow-indigo-600/10 active:scale-[0.98] border border-indigo-500 cursor-pointer"
-                >
-                  {lang === "vi" ? "Lưu" : "Save"}
-                </button>
               </div>
-            </>
+            </div>
           )}
         </section>
 

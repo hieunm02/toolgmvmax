@@ -8,6 +8,20 @@ module.exports = {
   ],
   theme: {
     extend: {
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0', transform: 'translateY(-4px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideDown: {
+          '0%': { opacity: '0', transform: 'translateY(-8px) scaleY(0.95)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scaleY(1)' },
+        },
+      },
+      animation: {
+        fadeIn: 'fadeIn 0.2s ease-out forwards',
+        slideDown: 'slideDown 0.25s ease-out forwards',
+      },
       colors: {
         // Trading Dashboard Dark theme
         dark: {
