@@ -488,6 +488,12 @@ export default function Dashboard() {
     resolve: (val: boolean) => void;
   } | null>(null);
 
+  // Change password states
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
   // Custom notifications helper functions
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
     setToast({ message, type });
@@ -1629,6 +1635,51 @@ export default function Dashboard() {
     } catch (err) {
       console.error("Logout error:", err);
       showToast("Error logging out", "error");
+    }
+  };
+
+  // Change password handler
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmNewPassword) {
+      showToast(
+        lang === "vi" ? "Mật khẩu mới không trùng khớp!" : "New passwords do not match!",
+        "error"
+      );
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      const res = await fetch("/api/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(
+          lang === "vi"
+            ? "Đổi mật khẩu thành công! Vui lòng đăng nhập lại."
+            : "Password changed successfully! Please log in again.",
+          "success"
+        );
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmNewPassword("");
+        setTimeout(() => {
+          handleLogout();
+        }, 1500);
+      } else {
+        showToast(
+          data.error || (lang === "vi" ? "Đổi mật khẩu thất bại!" : "Failed to change password!"),
+          "error"
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(lang === "vi" ? "Lỗi kết nối!" : "Network error!", "error");
+    } finally {
+      setIsChangingPassword(false);
     }
   };
 
@@ -3978,6 +4029,90 @@ export default function Dashboard() {
                         </div>
                       ))}
                   </div>
+                </div>
+
+                {/* 3. Change Password Panel */}
+                <div className="bg-[#111318] border border-[#1F232B] rounded-lg p-6 flex flex-col gap-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">
+                      {lang === "vi" ? "Đổi mật khẩu bảo mật" : "Security Password Change"}
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {lang === "vi"
+                        ? "Đổi mật khẩu truy cập hệ thống. Mật khẩu mới sẽ được mã hóa và lưu trữ trực tiếp trong cơ sở dữ liệu."
+                        : "Change the system access password. The new password will be encrypted and stored in the database."}
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleChangePassword} className="bg-[#15181F] border border-[#1E232F] rounded-lg p-5 max-w-xl w-full flex flex-col gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Current Password */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                          {lang === "vi" ? "Mật khẩu hiện tại" : "Current Password"}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder="••••••••"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2.5 outline-none focus:border-indigo-500 transition-colors w-full"
+                        />
+                      </div>
+
+                      {/* New Password */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                          {lang === "vi" ? "Mật khẩu mới" : "New Password"}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder={lang === "vi" ? "Tối thiểu 6 ký tự" : "Min 6 characters"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2.5 outline-none focus:border-indigo-500 transition-colors w-full"
+                        />
+                      </div>
+
+                      {/* Confirm New Password */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                          {lang === "vi" ? "Xác nhận mật khẩu" : "Confirm Password"}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          placeholder={lang === "vi" ? "Nhập lại mật khẩu" : "Confirm new password"}
+                          value={confirmNewPassword}
+                          onChange={(e) => setConfirmNewPassword(e.target.value)}
+                          className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2.5 outline-none focus:border-indigo-500 transition-colors w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isChangingPassword}
+                      className="self-start px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-950/40 disabled:text-indigo-400 disabled:border-indigo-900/30 text-white border border-indigo-500 rounded-lg text-xs font-semibold tracking-wide transition-all active:scale-[0.98] cursor-pointer shadow-md shadow-indigo-600/10 flex items-center gap-1.5"
+                    >
+                      {isChangingPassword ? (
+                        <>
+                          <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          <span>{lang === "vi" ? "Đang xử lý..." : "Processing..."}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>🛡️</span>
+                          <span>{lang === "vi" ? "Cập nhật mật khẩu" : "Update Password"}</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
                 </div>
               </div>
             )}

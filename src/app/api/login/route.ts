@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSessionToken } from "../../../lib/auth";
+import { prisma } from "../../../lib/db";
+
+const bcrypt = require("bcryptjs");
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
@@ -56,7 +59,30 @@ export async function POST(request: Request) {
 
     const { username, password } = await request.json();
 
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    // ── Authentication: Check database first, then fallback to env vars ──
+    let isAuthenticated = false;
+
+    // Priority 1: Check if admin user exists in database (password was changed via UI)
+    try {
+      const dbUser = await prisma.user.findFirst({
+        where: { email: "admin@system" },
+      });
+
+      if (dbUser) {
+        // Verify against database hash
+        isAuthenticated = username === "admin" && (await bcrypt.compare(password, dbUser.passwordHash));
+      }
+    } catch (dbError) {
+      // Database might not be available — fall through to env check
+      console.error("DB auth check failed, falling back to env:", dbError);
+    }
+
+    // Priority 2: Fallback to environment variables (initial setup)
+    if (!isAuthenticated && !isAuthenticated) {
+      isAuthenticated = username === ADMIN_USERNAME && password === ADMIN_PASSWORD && ADMIN_PASSWORD !== "";
+    }
+
+    if (isAuthenticated) {
       // Successful login — clear failed attempts for this IP
       loginAttempts.delete(clientIp);
 
