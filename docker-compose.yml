@@ -62,7 +62,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: gmvmax-cron
-    command: ["npx", "tsx", "src/cron-worker.ts"]
+    command: ["node", "dist/cron-worker.js"]
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public
       - REDIS_URL=redis://redis:6379

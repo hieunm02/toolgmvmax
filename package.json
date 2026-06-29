@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && npm run build:cron",
+    "build:cron": "esbuild src/cron-worker.ts --bundle --platform=node --target=node18 --outfile=dist/cron-worker.js --external:@prisma/client --external:ioredis --external:bcryptjs --minify",
     "start": "next start",
     "lint": "next lint"
   },
@@ -28,6 +29,7 @@
     "postcss": "^8",
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "esbuild": "^0.20.1"
   }
 }
