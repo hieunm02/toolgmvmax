@@ -1617,6 +1617,21 @@ export default function Dashboard() {
     }
   };
 
+  // Logout handler
+  const handleLogout = async () => {
+    try {
+      const response = await fetch("/api/logout", { method: "POST" });
+      if (response.ok) {
+        window.location.href = "/login";
+      } else {
+        showToast(lang === "vi" ? "Đăng xuất thất bại!" : "Logout failed!", "error");
+      }
+    } catch (err) {
+      console.error("Logout error:", err);
+      showToast("Error logging out", "error");
+    }
+  };
+
   // Resolve Alert handler
   const handleResolveAlert = async (id: string) => {
     try {
@@ -1747,6 +1762,17 @@ export default function Dashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                 </svg>
               )}
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center justify-center w-7 h-7 rounded bg-[#15181F] border border-rose-950/40 text-rose-450 hover:bg-rose-950/30 transition-all cursor-pointer flex-shrink-0"
+              title={lang === "vi" ? "Đăng xuất" : "Logout"}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
             </button>
           </div>
         </div>
@@ -1934,6 +1960,17 @@ export default function Dashboard() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                 </svg>
               )}
+            </button>
+
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#15181F] border border-rose-950/40 text-rose-450 hover:bg-rose-950/30 hover:border-rose-500/40 transition-all cursor-pointer flex-shrink-0"
+              title={lang === "vi" ? "Đăng xuất" : "Logout"}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
             </button>
           </div>
         </div>
