@@ -494,6 +494,19 @@ export default function Dashboard() {
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  // Campaign updates states
+  const [updatingCampaigns, setUpdatingCampaigns] = useState<Record<string, boolean>>({});
+  const [editingCampaignBudgetId, setEditingCampaignBudgetId] = useState<string | null>(null);
+  const [tempCampaignBudget, setTempCampaignBudget] = useState<string>("");
+  const [editingCampaignRoasId, setEditingCampaignRoasId] = useState<string | null>(null);
+  const [tempCampaignRoas, setTempCampaignRoas] = useState<string>("");
+
+  // Relaunch custom configuration states
+  const [relaunchConfigCamp, setRelaunchConfigCamp] = useState<{ campaignId: string; alertId?: string; name: string } | null>(null);
+  const [relaunchBudget, setRelaunchBudget] = useState("");
+  const [relaunchRoas, setRelaunchRoas] = useState("");
+  const [isLoadingRelaunchInfo, setIsLoadingRelaunchInfo] = useState(false);
+
   // Custom notifications helper functions
   const showToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
     setToast({ message, type });
@@ -1683,6 +1696,120 @@ export default function Dashboard() {
     }
   };
 
+  // Toggle Campaign Status handler
+  const handleToggleCampaignStatus = async (campaignId: string, currentStatus: string) => {
+    const newStatus = currentStatus === "CAMPAIGN_STATUS_ENABLE" ? "CAMPAIGN_STATUS_DISABLE" : "CAMPAIGN_STATUS_ENABLE";
+    
+    setUpdatingCampaigns(prev => ({ ...prev, [campaignId]: true }));
+    try {
+      const res = await fetch("/api/campaigns", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, status: newStatus }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(
+          lang === "vi" 
+            ? "Cập nhật trạng thái chiến dịch thành công!" 
+            : "Campaign status updated successfully!", 
+          "success"
+        );
+        setCampaigns(prev =>
+          prev.map(c => c.campaignId === campaignId ? { ...c, status: newStatus } : c)
+        );
+      } else {
+        showToast(data.error || (lang === "vi" ? "Lỗi khi cập nhật trạng thái!" : "Error updating status!"), "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(lang === "vi" ? "Lỗi mạng!" : "Network error!", "error");
+    } finally {
+      setUpdatingCampaigns(prev => ({ ...prev, [campaignId]: false }));
+    }
+  };
+
+  // Update Campaign Budget handler
+  const handleUpdateCampaignBudget = async (campaignId: string) => {
+    const rawVal = tempCampaignBudget.replace(/\D/g, "");
+    if (!rawVal) return;
+    
+    const budgetVal = parseFloat(rawVal);
+    if (isNaN(budgetVal) || budgetVal < 0) {
+      showToast(lang === "vi" ? "Ngân sách không hợp lệ!" : "Invalid budget!", "error");
+      return;
+    }
+
+    setUpdatingCampaigns(prev => ({ ...prev, [campaignId]: true }));
+    try {
+      const res = await fetch("/api/campaigns", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, budget: budgetVal }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(
+          lang === "vi" 
+            ? "Cập nhật ngân sách chiến dịch thành công!" 
+            : "Campaign budget updated successfully!", 
+          "success"
+        );
+        setCampaigns(prev =>
+          prev.map(c => c.campaignId === campaignId ? { ...c, budget: budgetVal } : c)
+        );
+        setEditingCampaignBudgetId(null);
+      } else {
+        showToast(data.error || (lang === "vi" ? "Lỗi khi cập nhật ngân sách!" : "Error updating budget!"), "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(lang === "vi" ? "Lỗi mạng!" : "Network error!", "error");
+    } finally {
+      setUpdatingCampaigns(prev => ({ ...prev, [campaignId]: false }));
+    }
+  };
+
+  // Update Campaign Target ROI handler
+  const handleUpdateCampaignRoas = async (campaignId: string) => {
+    if (!tempCampaignRoas) return;
+    
+    const roasVal = parseFloat(tempCampaignRoas);
+    if (isNaN(roasVal) || roasVal < 0) {
+      showToast(lang === "vi" ? "ROI/ROAS mục tiêu không hợp lệ!" : "Invalid target ROI/ROAS!", "error");
+      return;
+    }
+
+    setUpdatingCampaigns(prev => ({ ...prev, [campaignId]: true }));
+    try {
+      const res = await fetch("/api/campaigns", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, roasBid: roasVal }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(
+          lang === "vi" 
+            ? "Cập nhật ROI mục tiêu chiến dịch thành công!" 
+            : "Campaign target ROI updated successfully!", 
+          "success"
+        );
+        setCampaigns(prev =>
+          prev.map(c => c.campaignId === campaignId ? { ...c, roasBid: roasVal } : c)
+        );
+        setEditingCampaignRoasId(null);
+      } else {
+        showToast(data.error || (lang === "vi" ? "Lỗi khi cập nhật ROI mục tiêu!" : "Error updating target ROI!"), "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(lang === "vi" ? "Lỗi mạng!" : "Network error!", "error");
+    } finally {
+      setUpdatingCampaigns(prev => ({ ...prev, [campaignId]: false }));
+    }
+  };
+
   // Resolve Alert handler
   const handleResolveAlert = async (id: string) => {
     try {
@@ -1702,31 +1829,84 @@ export default function Dashboard() {
 
   // Campaign relaunch handler
   const handleRelaunchCampaign = async (campaignId: string, alertId?: string) => {
-    const isConfirmed = await askConfirm(
-      lang === "vi"
-        ? "Bạn có chắc chắn muốn dừng chiến dịch cũ và khởi tạo chiến dịch mới V2 tương tự?"
-        : "Are you sure you want to pause the old campaign and relaunch a new V2 campaign?"
-    );
-    if (!isConfirmed) {
+    const localCamp = campaigns.find(c => c.campaignId === campaignId);
+    const campaignName = localCamp ? localCamp.name : "Campaign " + campaignId;
+    
+    setRelaunchConfigCamp({ campaignId, alertId, name: campaignName });
+    setIsLoadingRelaunchInfo(true);
+    setRelaunchBudget("");
+    setRelaunchRoas("");
+    try {
+      const res = await fetch(`/api/campaigns/info?campaignId=${campaignId}`);
+      const resData = await res.json();
+      if (res.ok && resData.success && resData.data) {
+        setRelaunchBudget(formatNumberString(resData.data.budget));
+        setRelaunchRoas(resData.data.roasBid ? resData.data.roasBid.toFixed(2) : "0.00");
+      } else {
+        // Fallback to local campaign data
+        if (localCamp) {
+          setRelaunchBudget(formatNumberString(localCamp.budget));
+        }
+        setRelaunchRoas("3.50"); // default fallback ROAS
+      }
+    } catch (err) {
+      console.error(err);
+      // Fallback
+      if (localCamp) {
+        setRelaunchBudget(formatNumberString(localCamp.budget));
+      }
+      setRelaunchRoas("3.50");
+    } finally {
+      setIsLoadingRelaunchInfo(false);
+    }
+  };
+
+  // Submit custom campaign relaunch
+  const submitRelaunchCampaign = async () => {
+    if (!relaunchConfigCamp) return;
+    const { campaignId, alertId } = relaunchConfigCamp;
+    
+    const budgetVal = parseFloat(relaunchBudget.replace(/\D/g, ""));
+    const roasVal = parseFloat(relaunchRoas);
+
+    if (isNaN(budgetVal) || budgetVal < 0) {
+      showToast(lang === "vi" ? "Ngân sách không hợp lệ!" : "Invalid budget!", "error");
       return;
     }
 
-    setRelaunchingId(campaignId);
+    if (isNaN(roasVal) || roasVal < 0) {
+      showToast(lang === "vi" ? "ROI/ROAS mục tiêu không hợp lệ!" : "Invalid target ROI/ROAS!", "error");
+      return;
+    }
+
+    setRelaunchConfigCamp(null); // Close modal
+    setRelaunchingId(campaignId); // Show loader spinner on campaign row
+
     try {
       const response = await fetch("/api/campaigns/relaunch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId, alertId }),
+        body: JSON.stringify({
+          campaignId,
+          alertId,
+          budget: budgetVal,
+          roasBid: roasVal,
+        }),
       });
       const res = await response.json();
       if (res.success) {
-        showToast(lang === "vi" ? `Tái khởi tạo thành công! Chiến dịch mới ID: ${res.data.newCampaignId}` : `Relaunch successful! New Campaign ID: ${res.data.newCampaignId}`, "success");
-        // Fetch fresh dashboard data to update tables and alerts list
+        showToast(
+          lang === "vi" 
+            ? `Tái khởi tạo thành công! Chiến dịch mới ID: ${res.data.newCampaignId}` 
+            : `Relaunch successful! New Campaign ID: ${res.data.newCampaignId}`, 
+          "success"
+        );
+        // Refresh dashboard data
         fetchData();
       } else {
         showToast(lang === "vi" ? `Lỗi tái khởi tạo: ${res.error}` : `Relaunch failed: ${res.error}`, "error");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       showToast(lang === "vi" ? "Có lỗi xảy ra trong quá trình kết nối API." : "An error occurred connecting to the API.", "error");
     } finally {
@@ -2586,16 +2766,141 @@ export default function Dashboard() {
                                       </>
                                     )}
                                   </div>
+                                  
+                                  {/* Inline Budget Display & Editor */}
+                                  <div className="flex items-center gap-1.5 mt-1 text-[10px] text-gray-450 font-mono select-none" onClick={(e) => e.stopPropagation()}>
+                                    <span>💰 {lang === "vi" ? "Ngân sách:" : "Budget:"}</span>
+                                    {editingCampaignBudgetId === camp.campaignId ? (
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="text"
+                                          value={tempCampaignBudget}
+                                          onChange={(e) => setTempCampaignBudget(formatNumberString(e.target.value))}
+                                          className="bg-[#15181F] text-white text-[10px] font-mono border border-indigo-500 rounded px-1.5 py-0.5 outline-none w-20"
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") handleUpdateCampaignBudget(camp.campaignId);
+                                            if (e.key === "Escape") setEditingCampaignBudgetId(null);
+                                          }}
+                                          autoFocus
+                                        />
+                                        <button
+                                          onClick={() => handleUpdateCampaignBudget(camp.campaignId)}
+                                          className="text-emerald-400 hover:text-emerald-300 font-bold"
+                                          title={lang === "vi" ? "Lưu" : "Save"}
+                                        >
+                                          ✓
+                                        </button>
+                                        <button
+                                          onClick={() => setEditingCampaignBudgetId(null)}
+                                          className="text-rose-400 hover:text-rose-300 font-bold"
+                                          title={lang === "vi" ? "Hủy" : "Cancel"}
+                                        >
+                                          ✗
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1 group">
+                                        <span className="text-gray-300 font-bold">
+                                          {camp.budgetMode === "BUDGET_MODE_INFINITE" ? (lang === "vi" ? "Không giới hạn" : "Unlimited") : formatVND(camp.budget)}
+                                        </span>
+                                        <button
+                                          onClick={() => {
+                                            setEditingCampaignBudgetId(camp.campaignId);
+                                            setTempCampaignBudget(formatNumberString(camp.budget));
+                                          }}
+                                          className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-300 transition-opacity ml-1"
+                                          title={lang === "vi" ? "Sửa ngân sách" : "Edit budget"}
+                                        >
+                                          ✏️
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Inline Target ROI Display & Editor */}
+                                  {camp.objectiveType === "OUTFLOW_GMV_MAX" && (
+                                    <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-gray-450 font-mono select-none" onClick={(e) => e.stopPropagation()}>
+                                      <span>🎯 {lang === "vi" ? "ROI mục tiêu:" : "Target ROI:"}</span>
+                                      {editingCampaignRoasId === camp.campaignId ? (
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number"
+                                            step="0.05"
+                                            min="0.1"
+                                            value={tempCampaignRoas}
+                                            onChange={(e) => setTempCampaignRoas(e.target.value)}
+                                            className="bg-[#15181F] text-white text-[10px] font-mono border border-indigo-500 rounded px-1.5 py-0.5 outline-none w-14"
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") handleUpdateCampaignRoas(camp.campaignId);
+                                              if (e.key === "Escape") setEditingCampaignRoasId(null);
+                                            }}
+                                            autoFocus
+                                          />
+                                          <button
+                                            onClick={() => handleUpdateCampaignRoas(camp.campaignId)}
+                                            className="text-emerald-400 hover:text-emerald-300 font-bold"
+                                            title={lang === "vi" ? "Lưu" : "Save"}
+                                          >
+                                            ✓
+                                          </button>
+                                          <button
+                                            onClick={() => setEditingCampaignRoasId(null)}
+                                            className="text-rose-400 hover:text-rose-300 font-bold"
+                                            title={lang === "vi" ? "Hủy" : "Cancel"}
+                                          >
+                                            ✗
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1 group">
+                                          <span className="text-gray-300 font-bold">
+                                            {camp.roasBid ? `${camp.roasBid.toFixed(2)}x` : "0.00x"}
+                                          </span>
+                                          <button
+                                            onClick={() => {
+                                              setEditingCampaignRoasId(camp.campaignId);
+                                              setTempCampaignRoas(camp.roasBid ? String(camp.roasBid) : "3.50");
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-indigo-300 transition-opacity ml-1"
+                                            title={lang === "vi" ? "Sửa ROI mục tiêu" : "Edit target ROI"}
+                                          >
+                                            ✏️
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </td>
-                              <td className="px-6 py-4">
-                                <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                                  camp.status === "CAMPAIGN_STATUS_ENABLE"
-                                    ? "bg-emerald-950 text-emerald-400"
-                                    : "bg-gray-850 text-gray-400"
-                                }`}>
-                                  {camp.status === "CAMPAIGN_STATUS_ENABLE" ? t.active : t.paused}
-                                </span>
+                              <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-2 select-none">
+                                  <button
+                                    onClick={() => handleToggleCampaignStatus(camp.campaignId, camp.status)}
+                                    disabled={updatingCampaigns[camp.campaignId]}
+                                    className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-250 ease-in-out focus:outline-none disabled:opacity-40 ${
+                                      camp.status === "CAMPAIGN_STATUS_ENABLE" ? "bg-emerald-500" : "bg-[#252833] border-[#3E4357]/20"
+                                    }`}
+                                    title={camp.status === "CAMPAIGN_STATUS_ENABLE" ? (lang === "vi" ? "Tạm dừng chiến dịch" : "Pause campaign") : (lang === "vi" ? "Bật chiến dịch" : "Enable campaign")}
+                                  >
+                                    <span
+                                      className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition duration-250 ease-in-out ${
+                                        camp.status === "CAMPAIGN_STATUS_ENABLE" ? "translate-x-3" : "translate-x-0"
+                                      }`}
+                                    />
+                                  </button>
+                                  {updatingCampaigns[camp.campaignId] ? (
+                                    <svg className="animate-spin h-3.5 w-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    </svg>
+                                  ) : (
+                                    <span className={`text-[9px] font-mono font-bold ${
+                                      camp.status === "CAMPAIGN_STATUS_ENABLE" ? "text-emerald-400" : "text-gray-500"
+                                    }`}>
+                                      {camp.status === "CAMPAIGN_STATUS_ENABLE" ? t.active : t.paused}
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-6 py-4 text-right font-mono">{formatVND(camp.spend)}</td>
                               <td className="px-6 py-4 text-right font-mono text-white">{formatVND(camp.gmv)}</td>
@@ -4221,6 +4526,95 @@ export default function Dashboard() {
                 className="px-4 py-2 rounded text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition-all"
               >
                 {lang === "vi" ? "Đồng ý" : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Relaunch Campaign Modal */}
+      {relaunchConfigCamp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-[#111318] border border-[#2B303C] rounded-xl shadow-2xl max-w-md w-full overflow-hidden animate-zoomIn">
+            <div className="p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 text-lg">
+                  🤖
+                </div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                  {lang === "vi" ? "Cấu hình tái khởi tạo V2" : "Configure Relaunch V2"}
+                </h3>
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed font-sans">
+                {lang === "vi" 
+                  ? `Bạn đang tắt chiến dịch cũ và khởi tạo chiến dịch mới V2 tương tự cho: ` 
+                  : `You are pausing the old campaign and relaunching a new V2 campaign for: `}
+                <span className="text-white font-bold block mt-1 break-all bg-[#15181F] p-2.5 rounded border border-[#1E232F]">{relaunchConfigCamp.name}</span>
+              </p>
+
+              {isLoadingRelaunchInfo ? (
+                <div className="py-8 flex flex-col items-center justify-center gap-3 text-xs text-indigo-400 font-mono">
+                  <svg className="animate-spin h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>{lang === "vi" ? "Đang tải thông số từ TikTok..." : "Loading config from TikTok..."}</span>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4 mt-2">
+                  {/* Custom Budget Input */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                      {lang === "vi" ? "Ngân sách mới (VNĐ)" : "New Budget (VND)"}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={relaunchBudget}
+                      onChange={(e) => setRelaunchBudget(formatNumberString(e.target.value))}
+                      className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2.5 outline-none focus:border-indigo-500 transition-colors w-full font-mono font-bold"
+                      placeholder="e.g. 200,000"
+                    />
+                  </div>
+
+                  {/* Custom ROAS Bid Input */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                      {lang === "vi" ? "Target ROI (ROAS mục tiêu)" : "Target ROI (Target ROAS)"}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      required
+                      value={relaunchRoas}
+                      onChange={(e) => setRelaunchRoas(e.target.value)}
+                      className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-3 py-2.5 outline-none focus:border-indigo-500 transition-colors w-full font-mono font-bold"
+                      placeholder="e.g. 3.50"
+                    />
+                    <span className="text-[9px] text-gray-550 leading-normal block">
+                      {lang === "vi" 
+                        ? "⚠️ Giá trị này quyết định tốc độ tiêu tiền. ROI đặt càng thấp, TikTok sẽ cắn tiền càng mạnh và ngược lại." 
+                        : "⚠️ This value controls the spend speed. A lower target ROI results in faster spend and vice versa."}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="bg-[#151820] px-6 py-4 flex items-center justify-end gap-3 border-t border-[#1F232B]">
+              <button
+                onClick={() => setRelaunchConfigCamp(null)}
+                className="px-4 py-2 rounded text-xs font-semibold bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white transition-all"
+              >
+                {lang === "vi" ? "Hủy bỏ" : "Cancel"}
+              </button>
+              <button
+                onClick={submitRelaunchCampaign}
+                disabled={isLoadingRelaunchInfo}
+                className="px-4 py-2 rounded text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white shadow-lg shadow-indigo-600/20 transition-all flex items-center gap-1.5"
+              >
+                <span>🚀</span>
+                <span>{lang === "vi" ? "Khởi tạo V2" : "Relaunch V2"}</span>
               </button>
             </div>
           </div>

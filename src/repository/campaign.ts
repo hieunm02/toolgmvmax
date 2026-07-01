@@ -18,6 +18,7 @@ export class CampaignRepository {
     budgetMode: string;
     advertiserId: string;
     shoppingAdsType?: string;
+    roasBid?: number;
   }): Promise<Campaign> {
     return prisma.campaign.upsert({
       where: { campaignId: data.campaignId },
@@ -29,6 +30,7 @@ export class CampaignRepository {
         budgetMode: data.budgetMode,
         advertiserId: data.advertiserId,
         shoppingAdsType: data.shoppingAdsType || "PRODUCT",
+        roasBid: data.roasBid !== undefined ? data.roasBid : undefined,
       },
       create: {
         campaignId: data.campaignId,
@@ -39,6 +41,7 @@ export class CampaignRepository {
         budgetMode: data.budgetMode,
         advertiserId: data.advertiserId,
         shoppingAdsType: data.shoppingAdsType || "PRODUCT",
+        roasBid: data.roasBid !== undefined ? data.roasBid : 0.0,
       },
     });
   }

@@ -144,6 +144,7 @@ export async function GET(request: Request) {
         objectiveType: c.objectiveType,
         budget: c.budget,
         budgetMode: c.budgetMode,
+        roasBid: c.roasBid || 0.0,
         shoppingAdsType: c.shoppingAdsType || "PRODUCT",
         advertiserName: c.advertiser.name,
         shopName: c.advertiser.shop.name,
@@ -161,6 +162,85 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ success: true, data: list });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const { campaignId, status, budget, roasBid } = await request.json();
+
+    if (!campaignId) {
+      return NextResponse.json({ success: false, error: "Missing campaignId" }, { status: 400 });
+    }
+
+    const campaign = await prisma.campaign.findUnique({
+      where: { campaignId },
+      include: {
+        advertiser: {
+          include: {
+            shop: true
+          }
+        },
+      },
+    });
+
+    if (!campaign) {
+      return NextResponse.json({ success: false, error: "Campaign not found" }, { status: 404 });
+    }
+
+    const { accessToken, advertiserId } = campaign.advertiser;
+    const { objectiveType } = campaign;
+
+    // 1. Update Status on TikTok if provided
+    if (status !== undefined) {
+      const tiktokStatus = status === "CAMPAIGN_STATUS_ENABLE" ? "ENABLE" : "DISABLE";
+      const TikTokApiService = (await import("../../../lib/tiktok")).default;
+      await TikTokApiService.updateCampaignStatus(accessToken, advertiserId, campaignId, tiktokStatus);
+
+      // Update DB
+      await prisma.campaign.update({
+        where: { campaignId },
+        data: { status },
+      });
+    }
+
+    // 2. Update Budget on TikTok if provided
+    if (budget !== undefined) {
+      const newBudget = parseFloat(budget);
+      if (isNaN(newBudget) || newBudget < 0) {
+        return NextResponse.json({ success: false, error: "Invalid budget" }, { status: 400 });
+      }
+
+      const TikTokApiService = (await import("../../../lib/tiktok")).default;
+      await TikTokApiService.updateCampaignBudget(accessToken, advertiserId, campaignId, newBudget, objectiveType);
+
+      // Update DB
+      await prisma.campaign.update({
+        where: { campaignId },
+        data: { budget: newBudget },
+      });
+    }
+
+    // 3. Update Target ROI (ROAS bid) on TikTok if provided
+    if (roasBid !== undefined) {
+      const targetRoas = parseFloat(roasBid);
+      if (isNaN(targetRoas) || targetRoas < 0) {
+        return NextResponse.json({ success: false, error: "Invalid target ROI" }, { status: 400 });
+      }
+
+      const TikTokApiService = (await import("../../../lib/tiktok")).default;
+      await TikTokApiService.updateCampaignRoas(accessToken, advertiserId, campaignId, targetRoas);
+
+      // Update DB
+      await prisma.campaign.update({
+        where: { campaignId },
+        data: { roasBid: targetRoas },
+      });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

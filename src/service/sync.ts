@@ -57,6 +57,7 @@ export class SyncService {
             budgetMode: camp.budgetMode,
             advertiserId: advertiser.id,
             shoppingAdsType: camp.shoppingAdsType,
+            roasBid: camp.roasBid,
           });
 
           const roi = camp.spend > 0 ? camp.gmv / camp.spend : 0;

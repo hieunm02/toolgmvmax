@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build && npm run build:cron",
     "build:cron": "esbuild src/cron-worker.ts --bundle --platform=node --target=node18 --outfile=dist/cron-worker.js --external:@prisma/client --external:ioredis --external:bcryptjs --minify",
-    "start": "next start",
+    "start": "npx prisma db push && next start",
     "lint": "next lint"
   },
   "dependencies": {

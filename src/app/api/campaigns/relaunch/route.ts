@@ -3,13 +3,19 @@ import { CampaignRelaunchService } from "../../../../service/relaunch";
 
 export async function POST(request: Request) {
   try {
-    const { campaignId, alertId } = await request.json();
+    const { campaignId, alertId, budget, roasBid } = await request.json();
 
     if (!campaignId) {
       return NextResponse.json({ success: false, error: "Missing campaignId" }, { status: 400 });
     }
 
-    const result = await CampaignRelaunchService.relaunchCampaign(campaignId, alertId);
+    const result = await CampaignRelaunchService.relaunchCampaign(
+      campaignId,
+      alertId,
+      budget !== undefined ? Number(budget) : undefined,
+      roasBid !== undefined ? Number(roasBid) : undefined
+    );
+
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });
     }
@@ -25,4 +31,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
-

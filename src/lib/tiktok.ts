@@ -13,6 +13,7 @@ export interface TikTokCampaignData {
   impressions: number;
   clicks: number;
   shoppingAdsType?: string;
+  roasBid?: number;
 }
 
 export interface TikTokProductData {
@@ -262,6 +263,7 @@ export class TikTokApiService {
           impressions: Number(stats.impressions || 0),
           clicks: Number(stats.clicks || 0),
           shoppingAdsType: "PRODUCT",
+          roasBid: Number(camp.roas_bid || 0.0),
         };
       });
 
@@ -376,6 +378,7 @@ export class TikTokApiService {
                         impressions: 0,
                         clicks: 0,
                         shoppingAdsType: info.shopping_ads_type || "PRODUCT",
+                        roasBid: Number(info.roas_bid || 0.0),
                       };
                     }
                   } catch (e) {
@@ -598,6 +601,80 @@ export class TikTokApiService {
     }
   }
 
+  // Updates a campaign status (ENABLE/DISABLE) on TikTok Ads
+  static async updateCampaignStatus(
+    accessToken: string,
+    advertiserId: string,
+    campaignId: string,
+    status: "ENABLE" | "DISABLE"
+  ): Promise<boolean> {
+    if (process.env.MOCK_TIKTOK_API === "true" || accessToken.startsWith("mock_")) {
+      logger.info(`Mock setting campaign status to ${status}`, { advertiserId, campaignId });
+      return true;
+    }
+
+    try {
+      const response = await fetch(`${this.getBaseUrl()}/campaign/status/update/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Token": accessToken,
+        },
+        body: JSON.stringify({
+          advertiser_id: advertiserId,
+          campaign_ids: [campaignId],
+          operation_status: status,
+        }),
+      });
+
+      const resData = await response.json();
+      if (resData.code !== 0) {
+        throw new Error(resData.message || `Failed to update campaign status to ${status}`);
+      }
+      return true;
+    } catch (error) {
+      logger.error(`TikTok updateCampaignStatus to ${status} failed`, error, { campaignId });
+      throw error;
+    }
+  }
+
+  // Updates campaign ROAS bid (Target ROI) on TikTok Ads
+  static async updateCampaignRoas(
+    accessToken: string,
+    advertiserId: string,
+    campaignId: string,
+    roasBid: number
+  ): Promise<boolean> {
+    if (process.env.MOCK_TIKTOK_API === "true" || accessToken.startsWith("mock_")) {
+      logger.info("Mock updating campaign ROAS bid", { advertiserId, campaignId, roasBid });
+      return true;
+    }
+
+    try {
+      const response = await fetch(`${this.getBaseUrl()}/campaign/gmv_max/update/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Token": accessToken,
+        },
+        body: JSON.stringify({
+          advertiser_id: advertiserId,
+          campaign_id: campaignId,
+          roas_bid: roasBid
+        }),
+      });
+
+      const resData = await response.json();
+      if (resData.code !== 0) {
+        throw new Error(resData.message || "Failed to update campaign ROAS bid");
+      }
+      return true;
+    } catch (error) {
+      logger.error("TikTok updateCampaignRoas failed", error, { campaignId });
+      throw error;
+    }
+  }
+
   // Clones a campaign on TikTok Ads
   static async cloneCampaign(
     accessToken: string,
@@ -609,6 +686,7 @@ export class TikTokApiService {
       budget: number;
       budgetMode: string;
       shoppingAdsType?: string | null;
+      roasBid?: number;
     }
   ): Promise<{ campaignId: string; name: string }> {
     let newName = "";
@@ -697,7 +775,7 @@ export class TikTokApiService {
           schedule_start_time: formattedStartTime,
           optimization_goal: oldConfig.optimization_goal,
           deep_bid_type: oldConfig.deep_bid_type,
-          roas_bid: oldConfig.roas_bid,
+          roas_bid: oldCampaign.roasBid !== undefined ? oldCampaign.roasBid : oldConfig.roas_bid,
           roi_protection_enabled: oldConfig.roi_protection_enabled,
           product_video_specific_type: oldConfig.product_video_specific_type,
           operation_status: "ENABLE"

@@ -64,6 +64,7 @@ model Campaign {
   objectiveType String
   budget        Float            @default(0.0)
   budgetMode    String           @default("BUDGET_MODE_INFINITE")
+  roasBid       Float?           @default(0.0)
   shoppingAdsType String?          @default("PRODUCT") // PRODUCT or LIVE
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt

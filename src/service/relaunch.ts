@@ -9,7 +9,9 @@ import { getVietnamDateString } from "../lib/date-utils";
 export class CampaignRelaunchService {
   static async relaunchCampaign(
     campaignId: string,
-    alertId?: string
+    alertId?: string,
+    customBudget?: number,
+    customRoasBid?: number
   ): Promise<{ success: boolean; newCampaignId?: string; error?: string }> {
     try {
       logger.info(`Campaign Relaunch Service triggered for campaign ID: ${campaignId}`);
@@ -70,9 +72,10 @@ export class CampaignRelaunchService {
         campaignId: oldCampaign.campaignId,
         name: oldCampaign.name,
         objectiveType: oldCampaign.objectiveType,
-        budget: oldCampaign.budget,
+        budget: customBudget !== undefined ? customBudget : oldCampaign.budget,
         budgetMode: oldCampaign.budgetMode,
         shoppingAdsType: oldCampaign.shoppingAdsType,
+        roasBid: customRoasBid,
       });
 
       // 4. Save new campaign in database
@@ -81,7 +84,7 @@ export class CampaignRelaunchService {
         name: clonedCampaign.name,
         status: "CAMPAIGN_STATUS_ENABLE",
         objectiveType: oldCampaign.objectiveType,
-        budget: oldCampaign.budget,
+        budget: customBudget !== undefined ? customBudget : oldCampaign.budget,
         budgetMode: oldCampaign.budgetMode,
         advertiserId: oldCampaign.advertiserId,
         shoppingAdsType: oldCampaign.shoppingAdsType || "PRODUCT",
