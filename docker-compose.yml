@@ -39,7 +39,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public&connection_limit=20
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
       - MOCK_TIKTOK_API=false
@@ -64,7 +64,7 @@ services:
     container_name: gmvmax-cron
     command: ["node", "dist/cron-worker.js"]
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public&connection_limit=20
       - REDIS_URL=redis://redis:6379
       - NODE_ENV=production
       - MOCK_TIKTOK_API=false
