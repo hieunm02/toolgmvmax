@@ -1561,6 +1561,12 @@ export default function Dashboard() {
     }
   };
 
+  const handleSingleDateSelect = (val: string) => {
+    setStartDate(val);
+    setEndDate(val);
+    fetchDataForRange(val, val);
+  };
+
   const handleStartDateChange = (val: string) => {
     setStartDate(val);
     fetchDataForRange(val, endDate);
@@ -2436,6 +2442,27 @@ export default function Dashboard() {
                     value={endDate}
                     onChange={(e) => handleEndDateChange(e.target.value)}
                     className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-[#2B303C] rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
+                  />
+                </div>
+
+                {/* Separator */}
+                <div className="h-4 w-px bg-[#1F232B] hidden md:block mx-1" />
+                <span className="text-[10px] text-gray-500 uppercase font-mono md:hidden block mt-1 w-full">
+                  {lang === "vi" ? "— Hoặc —" : "— Or —"}
+                </span>
+
+                {/* Quick Single Date View */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-indigo-400 font-mono uppercase font-bold tracking-wider">
+                    {lang === "vi" ? "Xem nhanh 1 ngày:" : "Quick 1 Day:"}
+                  </span>
+                  <input
+                    type="date"
+                    value={startDate === endDate ? startDate : ""}
+                    onChange={(e) => {
+                      if (e.target.value) handleSingleDateSelect(e.target.value);
+                    }}
+                    className="bg-[#15181F] text-gray-200 text-xs font-mono outline-none border border-indigo-500/30 rounded-lg px-2.5 py-1.5 cursor-pointer [color-scheme:dark] hover:border-indigo-500/50 focus:border-indigo-500 transition-colors"
                   />
                 </div>
               </div>
