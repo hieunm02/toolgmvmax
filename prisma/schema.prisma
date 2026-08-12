@@ -73,6 +73,8 @@ model Campaign {
   reports       CampaignReport[]
   spendSnapshots CampaignSpendSnapshot[]
 
+  @@index([advertiserId, status])
+  @@index([objectiveType])
   @@map("campaigns")
 }
 
@@ -122,6 +124,8 @@ model CampaignReport {
   createdAt      DateTime @default(now())
 
   @@unique([campaignId, date])
+  @@index([date])
+  @@index([campaignId, date])
   @@map("campaign_reports")
 }
 
@@ -180,5 +184,6 @@ model CampaignSpendSnapshot {
   spend      Float    @default(0.0)
   gmv        Float    @default(0.0)
 
+  @@index([campaignId, timestamp])
   @@map("campaign_spend_snapshots")
 }

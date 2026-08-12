@@ -1506,22 +1506,21 @@ export default function Dashboard() {
       if (selectedShop) shopOnlyParams.set("shopId", selectedShop);
       const shopParam = shopOnlyParams.toString() ? `?${shopOnlyParams.toString()}` : "";
 
-      const [dashRes, campRes, prodRes, creatRes, alertRes, aiRes] = await Promise.all([
+      // Phase 1: Load critical data first (fast — DB queries only)
+      const [dashRes, campRes, prodRes, creatRes, alertRes] = await Promise.all([
         fetch(`/api/dashboard${dateParam}`),
         fetch(`/api/campaigns${dateParam}`),
         fetch(`/api/products${shopParam}`),
         fetch(`/api/creatives${shopParam}`),
         fetch(`/api/alerts`),
-        fetch(`/api/ai${shopParam}`),
       ]);
 
-      const [dash, camp, prod, creat, alert, ai] = await Promise.all([
+      const [dash, camp, prod, creat, alert] = await Promise.all([
         dashRes.json(),
         campRes.json(),
         prodRes.json(),
         creatRes.json(),
         alertRes.json(),
-        aiRes.json(),
       ]);
 
       if (dash.success) setWidgets(dash.data.widgets);
@@ -1529,11 +1528,23 @@ export default function Dashboard() {
       if (prod.success) setProductsData(prod.data);
       if (creat.success) setCreativesData(creat.data);
       if (alert.success) setAlerts(alert.data);
-      if (ai.success) setRecommendations(ai.data);
     } catch (e) {
       console.error("Failed to load dashboard metrics", e);
     } finally {
       setLoading(false);
+    }
+
+    // Phase 2: Load AI recommendations lazily in background (heavier — doesn't block UI)
+    if (selectedShop) {
+      const shopOnlyParams = new URLSearchParams();
+      shopOnlyParams.set("shopId", selectedShop);
+      try {
+        const aiRes = await fetch(`/api/ai?${shopOnlyParams.toString()}`);
+        const ai = await aiRes.json();
+        if (ai.success) setRecommendations(ai.data);
+      } catch (e) {
+        console.error("Failed to load AI recommendations", e);
+      }
     }
   };
 

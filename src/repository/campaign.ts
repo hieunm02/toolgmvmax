@@ -117,15 +117,41 @@ export class CampaignRepository {
 
     return prisma.campaign.findMany({
       where: whereClause,
-      include: {
+      select: {
+        id: true,
+        campaignId: true,
+        name: true,
+        status: true,
+        objectiveType: true,
+        budget: true,
+        budgetMode: true,
+        roasBid: true,
+        shoppingAdsType: true,
+        createdAt: true,
         advertiser: {
-          include: {
-            shop: true,
+          select: {
+            name: true,
+            advertiserId: true,
+            accessToken: true,
+            shop: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
         reports: {
           where: reportWhereClause,
           orderBy: { date: "asc" },
+          select: {
+            spend: true,
+            gmv: true,
+            roi: true,
+            orders: true,
+            impressions: true,
+            clicks: true,
+            date: true,
+          },
         },
       },
     });
