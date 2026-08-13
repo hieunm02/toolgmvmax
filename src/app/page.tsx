@@ -446,6 +446,11 @@ export default function Dashboard() {
   const [dbAdvertisers, setDbAdvertisers] = useState<any[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
   const [sendingReport, setSendingReport] = useState<boolean>(false);
+  const [showHistoricalSyncModal, setShowHistoricalSyncModal] = useState<boolean>(false);
+  const [historicalSyncing, setHistoricalSyncing] = useState<boolean>(false);
+  const [historicalSyncStart, setHistoricalSyncStart] = useState<string>("");
+  const [historicalSyncEnd, setHistoricalSyncEnd] = useState<string>("");
+  const [historicalSyncResult, setHistoricalSyncResult] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [sortBy, setSortBy] = useState<string>("spend"); // Default sorting column
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc"); // Default sorting order (low to high as requested)
@@ -1635,6 +1640,40 @@ export default function Dashboard() {
     }
   };
 
+  // Historical data recovery handler
+  const handleHistoricalSync = async () => {
+    if (!historicalSyncStart || !historicalSyncEnd) {
+      showToast(lang === "vi" ? "Vui lòng chọn khoảng ngày cần khôi phục!" : "Please select a date range to recover!", "error");
+      return;
+    }
+    setHistoricalSyncing(true);
+    setHistoricalSyncResult(null);
+    try {
+      const response = await fetch("/api/sync/historical", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate: historicalSyncStart, endDate: historicalSyncEnd }),
+      });
+      const res = await response.json();
+      if (res.success) {
+        setHistoricalSyncResult(res.data);
+        showToast(
+          lang === "vi"
+            ? `Khôi phục thành công ${res.data.successDays}/${res.data.totalDays} ngày!`
+            : `Recovered ${res.data.successDays}/${res.data.totalDays} days successfully!`,
+          "success"
+        );
+        fetchData();
+      } else {
+        showToast(`${lang === "vi" ? "Khôi phục thất bại" : "Recovery failed"}: ${res.error}`, "error");
+      }
+    } catch (err) {
+      showToast(lang === "vi" ? "Không thể kết nối API khôi phục dữ liệu." : "Cannot connect to recovery API.", "error");
+    } finally {
+      setHistoricalSyncing(false);
+    }
+  };
+
   // Send Telegram Report handler
   const handleSendTelegramReport = async () => {
     setSendingReport(true);
@@ -2133,6 +2172,18 @@ export default function Dashboard() {
                     <span className="truncate text-white">{t.syncAccounts}</span>
                   </>
                 )}
+              </button>
+
+              {/* Historical Sync Button */}
+              <button
+                onClick={() => { setShowHistoricalSyncModal(true); setHistoricalSyncResult(null); }}
+                title={lang === "vi" ? "Khôi phục dữ liệu lịch sử" : "Recover historical data"}
+                className="flex-initial flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all duration-250 border bg-amber-600/20 hover:bg-amber-500/30 text-amber-300 border-amber-700/40 shadow-sm active:scale-[0.98] cursor-pointer"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="hidden sm:inline truncate">{lang === "vi" ? "Khôi phục" : "Recover"}</span>
               </button>
 
               {/* Telegram Report Button */}
@@ -4653,6 +4704,117 @@ export default function Dashboard() {
               >
                 <span>🚀</span>
                 <span>{lang === "vi" ? "Khởi tạo V2" : "Relaunch V2"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Historical Sync Recovery Modal */}
+      {showHistoricalSyncModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-[#0E1015] border border-[#1E232F] rounded-2xl shadow-2xl w-full max-w-md flex flex-col gap-5 p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                  <svg className="h-4 w-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-white">
+                    {lang === "vi" ? "Khôi phục dữ liệu lịch sử" : "Recover Historical Data"}
+                  </h2>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    {lang === "vi" ? "Đồng bộ lại dữ liệu từ TikTok API theo khoảng ngày" : "Re-sync data from TikTok API by date range"}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setShowHistoricalSyncModal(false)} className="text-gray-500 hover:text-white transition-colors p-1 rounded">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {/* Warning */}
+            <div className="bg-amber-950/30 border border-amber-800/30 rounded-lg p-3 flex gap-2.5">
+              <svg className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <p className="text-[10px] text-amber-300/80 leading-relaxed">
+                {lang === "vi"
+                  ? "TikTok API chỉ lưu dữ liệu trong vòng 30 ngày gần nhất. Quá trình khôi phục có thể mất vài phút tùy số ngày và số tài khoản."
+                  : "TikTok API only retains data for the last 30 days. Recovery may take a few minutes depending on date range and account count."}
+              </p>
+            </div>
+
+            {/* Date Range Inputs */}
+            <div className="flex gap-3">
+              <div className="flex-1 flex flex-col gap-1.5">
+                <label className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                  {lang === "vi" ? "Từ ngày" : "Start Date"}
+                </label>
+                <input
+                  type="date"
+                  value={historicalSyncStart}
+                  onChange={(e) => setHistoricalSyncStart(e.target.value)}
+                  className="bg-[#0A0C10] text-gray-200 text-xs border border-[#2B303C] rounded-lg px-3 py-2.5 outline-none focus:border-amber-500 transition-colors w-full font-mono"
+                />
+              </div>
+              <div className="flex-1 flex flex-col gap-1.5">
+                <label className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                  {lang === "vi" ? "Đến ngày" : "End Date"}
+                </label>
+                <input
+                  type="date"
+                  value={historicalSyncEnd}
+                  onChange={(e) => setHistoricalSyncEnd(e.target.value)}
+                  className="bg-[#0A0C10] text-gray-200 text-xs border border-[#2B303C] rounded-lg px-3 py-2.5 outline-none focus:border-amber-500 transition-colors w-full font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Result */}
+            {historicalSyncResult && (
+              <div className="bg-emerald-950/30 border border-emerald-800/30 rounded-lg p-3">
+                <p className="text-[10px] text-emerald-300 font-mono">
+                  ✅ {lang === "vi" ? "Hoàn tất" : "Done"}: {historicalSyncResult.successDays}/{historicalSyncResult.totalDays} {lang === "vi" ? "ngày thành công" : "days synced"}
+                  {historicalSyncResult.failedDays > 0 && (
+                    <span className="text-red-400"> · {historicalSyncResult.failedDays} {lang === "vi" ? "ngày lỗi" : "failed"}</span>
+                  )}
+                </p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2.5 justify-end">
+              <button
+                onClick={() => setShowHistoricalSyncModal(false)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white transition-all"
+              >
+                {lang === "vi" ? "Đóng" : "Close"}
+              </button>
+              <button
+                onClick={handleHistoricalSync}
+                disabled={historicalSyncing || !historicalSyncStart || !historicalSyncEnd}
+                className="px-5 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-amber-600/20 transition-all flex items-center gap-1.5"
+              >
+                {historicalSyncing ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>{lang === "vi" ? "Đang khôi phục..." : "Recovering..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
+                    </svg>
+                    <span>{lang === "vi" ? "Bắt đầu khôi phục" : "Start Recovery"}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
