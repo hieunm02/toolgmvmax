@@ -6,11 +6,28 @@ import { SyncService } from "../../../../service/sync";
 // Syncs all advertising accounts for each day in the given date range
 export async function POST(request: Request) {
   try {
-    const { startDate, endDate } = await request.json();
+    const body = await request.json();
+    const { date, startDate, endDate } = body;
 
+    // Single day sync
+    if (date) {
+      console.log(`[Historical Sync] Syncing single date: ${date}`);
+      const result = await SyncService.syncAllAccounts(date);
+      return NextResponse.json({
+        success: result.success,
+        data: {
+          totalDays: 1,
+          successDays: result.success ? 1 : 0,
+          failedDays: result.success ? 0 : 1,
+          results: [{ date, ...result }],
+        },
+      });
+    }
+
+    // Date range sync
     if (!startDate || !endDate) {
       return NextResponse.json(
-        { success: false, error: "Missing startDate or endDate. Format: YYYY-MM-DD" },
+        { success: false, error: "Missing date or startDate/endDate. Format: YYYY-MM-DD" },
         { status: 400 }
       );
     }

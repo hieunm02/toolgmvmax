@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 // Format number to VND currency
 const formatVND = (value: number): string => {
@@ -451,6 +451,14 @@ export default function Dashboard() {
   const [historicalSyncStart, setHistoricalSyncStart] = useState<string>("");
   const [historicalSyncEnd, setHistoricalSyncEnd] = useState<string>("");
   const [historicalSyncResult, setHistoricalSyncResult] = useState<any>(null);
+  const [historicalProgress, setHistoricalProgress] = useState<{
+    current: number;
+    total: number;
+    currentDate: string;
+    percent: number;
+    logs: { date: string; success: boolean; syncedAccounts?: number; error?: string }[];
+  }>({ current: 0, total: 0, currentDate: "", percent: 0, logs: [] });
+  const isHistoricalSyncAbortedRef = useRef<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [sortBy, setSortBy] = useState<string>("spend"); // Default sorting column
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc"); // Default sorting order (low to high as requested)
@@ -1647,38 +1655,127 @@ export default function Dashboard() {
     }
   };
 
-  // Historical data recovery handler
+  // Historical data recovery handler with real-time day-by-day progress tracking
   const handleHistoricalSync = async () => {
     if (!historicalSyncStart || !historicalSyncEnd) {
       showToast(lang === "vi" ? "Vui lòng chọn khoảng ngày cần khôi phục!" : "Please select a date range to recover!", "error");
       return;
     }
+
+    const start = new Date(historicalSyncStart);
+    const end = new Date(historicalSyncEnd);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+      showToast(lang === "vi" ? "Khoảng ngày không hợp lệ!" : "Invalid date range!", "error");
+      return;
+    }
+
+    // Build list of dates
+    const dates: string[] = [];
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const yyyy = cursor.getFullYear();
+      const mm = String(cursor.getMonth() + 1).padStart(2, "0");
+      const dd = String(cursor.getDate()).padStart(2, "0");
+      dates.push(`${yyyy}-${mm}-${dd}`);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
     setHistoricalSyncing(true);
     setHistoricalSyncResult(null);
-    try {
-      const response = await fetch("/api/sync/historical", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ startDate: historicalSyncStart, endDate: historicalSyncEnd }),
-      });
-      const res = await response.json();
-      if (res.success) {
-        setHistoricalSyncResult(res.data);
-        showToast(
-          lang === "vi"
-            ? `Khôi phục thành công ${res.data.successDays}/${res.data.totalDays} ngày!`
-            : `Recovered ${res.data.successDays}/${res.data.totalDays} days successfully!`,
-          "success"
-        );
-        fetchData();
-      } else {
-        showToast(`${lang === "vi" ? "Khôi phục thất bại" : "Recovery failed"}: ${res.error}`, "error");
+    isHistoricalSyncAbortedRef.current = false;
+
+    setHistoricalProgress({
+      current: 0,
+      total: dates.length,
+      currentDate: dates[0] || "",
+      percent: 0,
+      logs: [],
+    });
+
+    const results: { date: string; success: boolean; syncedAccounts?: number; error?: string }[] = [];
+
+    for (let i = 0; i < dates.length; i++) {
+      if (isHistoricalSyncAbortedRef.current) {
+        showToast(lang === "vi" ? "Đã dừng tiến trình khôi phục!" : "Recovery process stopped!", "info");
+        break;
       }
-    } catch (err) {
-      showToast(lang === "vi" ? "Không thể kết nối API khôi phục dữ liệu." : "Cannot connect to recovery API.", "error");
-    } finally {
-      setHistoricalSyncing(false);
+
+      const dStr = dates[i];
+      setHistoricalProgress((prev) => ({
+        ...prev,
+        current: i + 1,
+        currentDate: dStr,
+        percent: Math.round(((i) / dates.length) * 100),
+      }));
+
+      try {
+        const response = await fetch("/api/sync/historical", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: dStr }),
+        });
+        const res = await response.json();
+        const success = res.success;
+        const syncedAccounts = res.data?.results?.[0]?.syncedAccounts || 0;
+        const errorMsg = res.error || (res.data?.results?.[0]?.errors?.length ? "API Error" : undefined);
+
+        const logEntry = {
+          date: dStr,
+          success,
+          syncedAccounts,
+          error: errorMsg,
+        };
+        results.push(logEntry);
+
+        setHistoricalProgress((prev) => ({
+          ...prev,
+          current: i + 1,
+          percent: Math.round(((i + 1) / dates.length) * 100),
+          logs: [logEntry, ...prev.logs],
+        }));
+      } catch (err: any) {
+        const logEntry = {
+          date: dStr,
+          success: false,
+          error: err.message || "Network Error",
+        };
+        results.push(logEntry);
+
+        setHistoricalProgress((prev) => ({
+          ...prev,
+          current: i + 1,
+          percent: Math.round(((i + 1) / dates.length) * 100),
+          logs: [logEntry, ...prev.logs],
+        }));
+      }
     }
+
+    const successDays = results.filter((r) => r.success).length;
+    const failedDays = results.filter((r) => !r.success).length;
+
+    setHistoricalSyncResult({
+      totalDays: results.length,
+      successDays,
+      failedDays,
+      results,
+    });
+
+    setHistoricalSyncing(false);
+
+    if (successDays > 0) {
+      showToast(
+        lang === "vi"
+          ? `Khôi phục thành công ${successDays}/${results.length} ngày!`
+          : `Recovered ${successDays}/${results.length} days successfully!`,
+        "success"
+      );
+      fetchData();
+    }
+  };
+
+  const handleStopHistoricalSync = () => {
+    isHistoricalSyncAbortedRef.current = true;
   };
 
   // Send Telegram Report handler
@@ -4763,9 +4860,10 @@ export default function Dashboard() {
                 </label>
                 <input
                   type="date"
+                  disabled={historicalSyncing}
                   value={historicalSyncStart}
                   onChange={(e) => setHistoricalSyncStart(e.target.value)}
-                  className="bg-[#0A0C10] text-gray-200 text-xs border border-[#2B303C] rounded-lg px-3 py-2.5 outline-none focus:border-amber-500 transition-colors w-full font-mono"
+                  className="bg-[#0A0C10] text-gray-200 text-xs border border-[#2B303C] rounded-lg px-3 py-2.5 outline-none focus:border-amber-500 transition-colors w-full font-mono disabled:opacity-50"
                 />
               </div>
               <div className="flex-1 flex flex-col gap-1.5">
@@ -4774,20 +4872,76 @@ export default function Dashboard() {
                 </label>
                 <input
                   type="date"
+                  disabled={historicalSyncing}
                   value={historicalSyncEnd}
                   onChange={(e) => setHistoricalSyncEnd(e.target.value)}
-                  className="bg-[#0A0C10] text-gray-200 text-xs border border-[#2B303C] rounded-lg px-3 py-2.5 outline-none focus:border-amber-500 transition-colors w-full font-mono"
+                  className="bg-[#0A0C10] text-gray-200 text-xs border border-[#2B303C] rounded-lg px-3 py-2.5 outline-none focus:border-amber-500 transition-colors w-full font-mono disabled:opacity-50"
                 />
               </div>
             </div>
 
-            {/* Result */}
-            {historicalSyncResult && (
+            {/* Real-Time Progress Bar when Syncing */}
+            {historicalSyncing && (
+              <div className="bg-[#15181F] border border-[#2B303C] rounded-xl p-4 flex flex-col gap-2.5 animate-fadeIn">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-amber-400 font-semibold flex items-center gap-1.5">
+                    <svg className="animate-spin h-3.5 w-3.5 text-amber-400" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    {lang === "vi" ? `Đang đồng bộ: ${historicalProgress.currentDate}` : `Syncing date: ${historicalProgress.currentDate}`}
+                  </span>
+                  <span className="font-mono font-bold text-white text-xs">
+                    {historicalProgress.percent}% ({historicalProgress.current}/{historicalProgress.total} {lang === "vi" ? "ngày" : "days"})
+                  </span>
+                </div>
+
+                {/* Progress Bar Container */}
+                <div className="w-full bg-[#0E1015] h-2.5 rounded-full overflow-hidden border border-[#1E232F]">
+                  <div
+                    className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${historicalProgress.percent}%` }}
+                  />
+                </div>
+
+                <span className="text-[10px] text-gray-500 font-mono">
+                  {lang === "vi" ? "Tốc độ trung bình: ~1.5 giây / 1 ngày dữ liệu" : "Average speed: ~1.5s per day"}
+                </span>
+              </div>
+            )}
+
+            {/* Live History Log Box */}
+            {historicalProgress.logs.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold tracking-wider">
+                  {lang === "vi" ? `Nhật ký tiến độ (${historicalProgress.logs.length} ngày đã xong):` : `Progress Log (${historicalProgress.logs.length} days done):`}
+                </span>
+                <div className="max-h-36 overflow-y-auto bg-[#0A0C10] border border-[#1E232F] rounded-lg p-2 flex flex-col gap-1 font-mono text-[11px]">
+                  {historicalProgress.logs.map((log, idx) => (
+                    <div key={idx} className="flex items-center justify-between px-2 py-1 rounded bg-[#111318] border border-[#1B1F2A]">
+                      <span className="text-gray-300 font-semibold">{log.date}</span>
+                      {log.success ? (
+                        <span className="text-emerald-400 flex items-center gap-1 text-[10px]">
+                          ✓ {lang === "vi" ? `Thành công (${log.syncedAccounts || 0} tài khoản)` : `Done (${log.syncedAccounts || 0} accounts)`}
+                        </span>
+                      ) : (
+                        <span className="text-red-400 text-[10px]">
+                          ✕ {log.error || (lang === "vi" ? "Lỗi kết nối" : "Error")}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Final Summary Result */}
+            {!historicalSyncing && historicalSyncResult && (
               <div className="bg-emerald-950/30 border border-emerald-800/30 rounded-lg p-3">
-                <p className="text-[10px] text-emerald-300 font-mono">
-                  ✅ {lang === "vi" ? "Hoàn tất" : "Done"}: {historicalSyncResult.successDays}/{historicalSyncResult.totalDays} {lang === "vi" ? "ngày thành công" : "days synced"}
+                <p className="text-[11px] text-emerald-300 font-mono font-semibold">
+                  ✅ {lang === "vi" ? "Đã hoàn tất khôi phục" : "Recovery completed"}: {historicalSyncResult.successDays}/{historicalSyncResult.totalDays} {lang === "vi" ? "ngày thành công" : "days synced successfully"}
                   {historicalSyncResult.failedDays > 0 && (
-                    <span className="text-red-400"> · {historicalSyncResult.failedDays} {lang === "vi" ? "ngày lỗi" : "failed"}</span>
+                    <span className="text-red-400 font-normal"> · {historicalSyncResult.failedDays} {lang === "vi" ? "ngày bị lỗi" : "days failed"}</span>
                   )}
                 </p>
               </div>
@@ -4795,34 +4949,40 @@ export default function Dashboard() {
 
             {/* Actions */}
             <div className="flex gap-2.5 justify-end">
-              <button
-                onClick={() => setShowHistoricalSyncModal(false)}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white transition-all"
-              >
-                {lang === "vi" ? "Đóng" : "Close"}
-              </button>
-              <button
-                onClick={handleHistoricalSync}
-                disabled={historicalSyncing || !historicalSyncStart || !historicalSyncEnd}
-                className="px-5 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-amber-600/20 transition-all flex items-center gap-1.5"
-              >
-                {historicalSyncing ? (
-                  <>
-                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span>{lang === "vi" ? "Đang khôi phục..." : "Recovering..."}</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
-                    </svg>
-                    <span>{lang === "vi" ? "Bắt đầu khôi phục" : "Start Recovery"}</span>
-                  </>
-                )}
-              </button>
+              {historicalSyncing ? (
+                <button
+                  type="button"
+                  onClick={handleStopHistoricalSync}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-red-900/30 hover:bg-red-900/50 text-red-300 border border-red-700/40 transition-all flex items-center gap-1.5"
+                >
+                  <svg className="h-3.5 w-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  <span>{lang === "vi" ? "Dừng lại" : "Stop"}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowHistoricalSyncModal(false)}
+                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white transition-all"
+                >
+                  {lang === "vi" ? "Đóng" : "Close"}
+                </button>
+              )}
+
+              {!historicalSyncing && (
+                <button
+                  type="button"
+                  onClick={handleHistoricalSync}
+                  disabled={!historicalSyncStart || !historicalSyncEnd}
+                  className="px-5 py-2 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white shadow-lg shadow-amber-600/20 transition-all flex items-center gap-1.5"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
+                  </svg>
+                  <span>{lang === "vi" ? "Bắt đầu khôi phục" : "Start Recovery"}</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
