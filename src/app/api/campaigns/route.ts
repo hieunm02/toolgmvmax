@@ -20,60 +20,83 @@ export async function GET(request: Request) {
       endDate,
     });
 
-    // Query snapshots for 30-minute interval spend calculation
-    let snapshotStart = new Date();
-    let snapshotEnd = new Date();
+    // Determine if we need intra-day 30-minute spend speed snapshots (only for today or single-day view)
+    const isSingleDay = Boolean(startDate && endDate && startDate.toDateString() === endDate.toDateString());
+    const isTodayView = Boolean(!startDate && !endDate);
+    const needSnapshots = isSingleDay || isTodayView;
 
-    if (startDate && endDate) {
-      snapshotStart = new Date(startDate);
-      snapshotStart.setHours(0, 0, 0, 0);
-
-      snapshotEnd = new Date(endDate);
-      snapshotEnd.setHours(23, 59, 59, 999);
-    } else {
-      // Default to last 24 hours
-      snapshotStart.setHours(snapshotStart.getHours() - 24);
-    }
-
-    const snapshots = await prisma.campaignSpendSnapshot.findMany({
-      where: {
-        campaignId: { in: campaigns.map((c) => c.id) },
-        timestamp: {
-          gte: snapshotStart,
-          lte: snapshotEnd,
-        },
-      },
-      orderBy: { timestamp: "asc" },
-    });
-
-    // Generate 48 time-buckets (30-minute intervals)
+    let snapshotsByCamp = new Map<string, any[]>();
     const buckets: Date[] = [];
     const intervalMs = 30 * 60 * 1000;
-    const now = new Date();
 
-    if (startDate && endDate && startDate.toDateString() === endDate.toDateString()) {
-      const startOfDay = new Date(startDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      for (let i = 1; i <= 48; i++) {
-        buckets.push(new Date(startOfDay.getTime() + i * intervalMs));
+    if (needSnapshots && campaigns.length > 0) {
+      let snapshotStart = new Date();
+      let snapshotEnd = new Date();
+
+      if (isSingleDay && startDate && endDate) {
+        snapshotStart = new Date(startDate);
+        snapshotStart.setHours(0, 0, 0, 0);
+
+        snapshotEnd = new Date(endDate);
+        snapshotEnd.setHours(23, 59, 59, 999);
+      } else {
+        // Default to last 24 hours
+        snapshotStart.setHours(snapshotStart.getHours() - 24);
       }
-    } else {
-      const nowTime = now.getTime();
-      for (let i = 47; i >= 0; i--) {
-        buckets.push(new Date(nowTime - i * intervalMs));
+
+      const snapshots = await prisma.campaignSpendSnapshot.findMany({
+        where: {
+          campaignId: { in: campaigns.map((c) => c.id) },
+          timestamp: {
+            gte: snapshotStart,
+            lte: snapshotEnd,
+          },
+        },
+        orderBy: { timestamp: "asc" },
+        select: {
+          campaignId: true,
+          spend: true,
+          timestamp: true,
+        },
+      });
+
+      // Pre-group snapshots by campaignId for O(1) lookup
+      for (const s of snapshots) {
+        const arr = snapshotsByCamp.get(s.campaignId);
+        if (arr) {
+          arr.push(s);
+        } else {
+          snapshotsByCamp.set(s.campaignId, [s]);
+        }
+      }
+
+      // Generate 48 time-buckets (30-minute intervals)
+      const now = new Date();
+      if (isSingleDay && startDate) {
+        const startOfDay = new Date(startDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        for (let i = 1; i <= 48; i++) {
+          buckets.push(new Date(startOfDay.getTime() + i * intervalMs));
+        }
+      } else {
+        const nowTime = now.getTime();
+        for (let i = 47; i >= 0; i--) {
+          buckets.push(new Date(nowTime - i * intervalMs));
+        }
       }
     }
 
     // Helper to find cumulative spend at targetDate from snapshots
     const getCumulativeSpendAt = (targetDate: Date, campaignSnapshots: any[]) => {
+      if (!campaignSnapshots || campaignSnapshots.length === 0) return 0;
       const targetMs = targetDate.getTime();
       let bestSnap = null;
-      for (const s of campaignSnapshots) {
+      for (let i = campaignSnapshots.length - 1; i >= 0; i--) {
+        const s = campaignSnapshots[i];
         const snapMs = new Date(s.timestamp).getTime();
         if (snapMs <= targetMs) {
-          if (!bestSnap || snapMs > new Date(bestSnap.timestamp).getTime()) {
-            bestSnap = s;
-          }
+          bestSnap = s;
+          break;
         }
       }
       return bestSnap ? bestSnap.spend : 0;
@@ -99,42 +122,44 @@ export async function GET(request: Request) {
       const ctr = impressions > 0 ? clicks / impressions : 0;
       const convRate = clicks > 0 ? orders / clicks : 0;
 
-      const campaignSnapshots = snapshots.filter((s) => s.campaignId === c.id);
+      const campaignSnapshots = snapshotsByCamp.get(c.id) || [];
 
-      // Compute 30-minute interval spend speed
-      const campaignHistory = buckets.map((bucket, idx) => {
-        const currentSpend = getCumulativeSpendAt(bucket, campaignSnapshots);
-        let deltaSpend = 0;
+      // Compute 30-minute interval spend speed (only if snapshots needed)
+      const campaignHistory = needSnapshots
+        ? buckets.map((bucket, idx) => {
+            const currentSpend = getCumulativeSpendAt(bucket, campaignSnapshots);
+            let deltaSpend = 0;
 
-        if (idx === 0) {
-          const prevTime = new Date(bucket.getTime() - intervalMs);
-          const previousSpend = getCumulativeSpendAt(prevTime, campaignSnapshots);
-          const currDateStr = bucket.toISOString().split("T")[0];
-          const prevDateStr = prevTime.toISOString().split("T")[0];
+            if (idx === 0) {
+              const prevTime = new Date(bucket.getTime() - intervalMs);
+              const previousSpend = getCumulativeSpendAt(prevTime, campaignSnapshots);
+              const currDateStr = bucket.toISOString().split("T")[0];
+              const prevDateStr = prevTime.toISOString().split("T")[0];
 
-          if (currDateStr === prevDateStr) {
-            deltaSpend = Math.max(0, currentSpend - previousSpend);
-          } else {
-            deltaSpend = currentSpend;
-          }
-        } else {
-          const prevBucket = buckets[idx - 1];
-          const previousSpend = getCumulativeSpendAt(prevBucket, campaignSnapshots);
-          const currDateStr = bucket.toISOString().split("T")[0];
-          const prevDateStr = prevBucket.toISOString().split("T")[0];
+              if (currDateStr === prevDateStr) {
+                deltaSpend = Math.max(0, currentSpend - previousSpend);
+              } else {
+                deltaSpend = currentSpend;
+              }
+            } else {
+              const prevBucket = buckets[idx - 1];
+              const previousSpend = getCumulativeSpendAt(prevBucket, campaignSnapshots);
+              const currDateStr = bucket.toISOString().split("T")[0];
+              const prevDateStr = prevBucket.toISOString().split("T")[0];
 
-          if (currDateStr === prevDateStr) {
-            deltaSpend = Math.max(0, currentSpend - previousSpend);
-          } else {
-            deltaSpend = currentSpend;
-          }
-        }
+              if (currDateStr === prevDateStr) {
+                deltaSpend = Math.max(0, currentSpend - previousSpend);
+              } else {
+                deltaSpend = currentSpend;
+              }
+            }
 
-        return {
-          date: bucket,
-          spend: deltaSpend,
-        };
-      });
+            return {
+              date: bucket,
+              spend: deltaSpend,
+            };
+          })
+        : [];
 
       return {
         id: c.id,

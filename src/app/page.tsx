@@ -1613,11 +1613,18 @@ export default function Dashboard() {
     fetchData(startDate, endDate);
   }, [selectedShop]);
 
-  // Tự động làm mới dữ liệu ngầm cứ mỗi 30 giây để cập nhật dữ liệu đồng bộ mới nhất
+  // Tự động làm mới dữ liệu ngầm cho ngày hôm nay (chỉ chạy khi xem ngày hôm nay và tab đang mở)
   useEffect(() => {
+    const today = getTodayString();
+    const isViewingToday = !endDate || endDate === today;
+    if (!isViewingToday) {
+      return; // Không tự động refresh liên tục khi đang xem dữ liệu quá khứ
+    }
+
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchData(startDate, endDate, true);
-    }, 30000); // 30 giây
+    }, 60000); // 60 giây
     return () => clearInterval(interval);
   }, [selectedShop, startDate, endDate]);
 

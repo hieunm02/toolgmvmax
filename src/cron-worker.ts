@@ -33,8 +33,10 @@ function startScheduler() {
   // Start Telegram Command Listener
   TelegramListenerService.startListener();
 
-  // Run immediately on boot
-  runCronSync();
+  // Run first sync after a 15s delay to let web server boot up cleanly
+  setTimeout(() => {
+    runCronSync();
+  }, 15000);
 
   // Run on interval
   const timer = setInterval(() => {
