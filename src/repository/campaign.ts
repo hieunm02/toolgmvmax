@@ -109,10 +109,22 @@ export class CampaignRepository {
 
     const reportWhereClause: any = {};
     if (filters.startDate && filters.endDate) {
+      const s = new Date(filters.startDate);
+      s.setHours(0, 0, 0, 0);
+      const e = new Date(filters.endDate);
+      e.setHours(23, 59, 59, 999);
       reportWhereClause.date = {
-        gte: filters.startDate,
-        lte: filters.endDate,
+        gte: s,
+        lte: e,
       };
+    } else if (filters.startDate) {
+      const s = new Date(filters.startDate);
+      s.setHours(0, 0, 0, 0);
+      reportWhereClause.date = { gte: s };
+    } else if (filters.endDate) {
+      const e = new Date(filters.endDate);
+      e.setHours(23, 59, 59, 999);
+      reportWhereClause.date = { lte: e };
     }
 
     return prisma.campaign.findMany({

@@ -25,14 +25,22 @@ export async function GET(request: Request) {
 
     // Date filter for reports
     if (startDateParam && endDateParam) {
+      const s = new Date(startDateParam);
+      s.setHours(0, 0, 0, 0);
+      const e = new Date(endDateParam);
+      e.setHours(23, 59, 59, 999);
       whereClause.date = {
-        gte: new Date(startDateParam),
-        lte: new Date(endDateParam),
+        gte: s,
+        lte: e,
       };
     } else if (startDateParam) {
-      whereClause.date = { gte: new Date(startDateParam) };
+      const s = new Date(startDateParam);
+      s.setHours(0, 0, 0, 0);
+      whereClause.date = { gte: s };
     } else if (endDateParam) {
-      whereClause.date = { lte: new Date(endDateParam) };
+      const e = new Date(endDateParam);
+      e.setHours(23, 59, 59, 999);
+      whereClause.date = { lte: e };
     }
 
     // Get all campaign reports
