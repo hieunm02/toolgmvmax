@@ -143,19 +143,24 @@ export class SyncService {
         syncedAccountsCount++;
         logger.info(`Successfully finished sync for advertiser: ${advertiser.advertiserId}`);
 
-        // Trigger alert engine evaluation for the shop associated with this advertiser
-        try {
-          await AlertEngineService.evaluateShopAlerts(advertiser.shopId);
-        } catch (alertError: any) {
-          logger.error(`Alert engine failed for shop ${advertiser.shopId}`, alertError);
-        }
-
       } catch (error: any) {
         logger.error(`Failed to sync advertiser account ${advertiser.advertiserId}`, error);
         errors.push({
           advertiserId: advertiser.advertiserId,
           message: error.message,
         });
+      }
+    }
+
+    // Trigger alert engine evaluation ONCE per unique shop (only for live today's sync, skip for historical syncs)
+    if (!customDate || customDate === getVietnamDateString()) {
+      const uniqueShopIds = Array.from(new Set(advertisers.map((a) => a.shopId).filter(Boolean)));
+      for (const shopId of uniqueShopIds) {
+        try {
+          await AlertEngineService.evaluateShopAlerts(shopId);
+        } catch (alertError: any) {
+          logger.error(`Alert engine failed for shop ${shopId}`, alertError);
+        }
       }
     }
 
