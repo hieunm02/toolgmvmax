@@ -4,6 +4,7 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: gmvmax-postgres
+    restart: unless-stopped
     ports:
       - "127.0.0.1:5432:5432"
     environment:
@@ -21,6 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: gmvmax-redis
+    restart: unless-stopped
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -36,6 +38,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: gmvmax-web
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
@@ -62,6 +65,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: gmvmax-cron
+    restart: unless-stopped
     command: ["node", "dist/cron-worker.js"]
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gmvmaxos?schema=public&connection_limit=20
