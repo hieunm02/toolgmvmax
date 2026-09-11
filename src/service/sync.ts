@@ -25,24 +25,38 @@ export class SyncService {
         
         let token = advertiser.accessToken;
         
-        // Auto-refresh token if close to expiry (within 15 minutes)
+        // Auto-refresh token if close to expiry (within 15 minutes) and has a valid real refresh token
         const fifteenMinutes = 15 * 60 * 1000;
-        if (new Date(advertiser.tokenExpiresAt).getTime() - Date.now() < fifteenMinutes) {
-          logger.info(`Refreshing token for advertiser: ${advertiser.advertiserId}`);
-          const refreshRes = await TikTokApiService.refreshAccessToken(advertiser.refreshToken);
-          
-          // Update advertiser token details
-          await ShopRepository.upsertAdvertiser({
-            advertiserId: advertiser.advertiserId,
-            name: advertiser.name,
-            accessToken: refreshRes.accessToken,
-            refreshToken: refreshRes.refreshToken,
-            tokenExpiresAt: new Date(Date.now() + refreshRes.expiresIn * 1000),
-            shopId: advertiser.shopId,
-          });
-          
-          token = refreshRes.accessToken;
-          logger.info(`Token successfully refreshed for: ${advertiser.advertiserId}`);
+        const hasValidRefreshToken = Boolean(
+          advertiser.refreshToken &&
+          !advertiser.refreshToken.toLowerCase().includes("sandbox") &&
+          !advertiser.refreshToken.toLowerCase().includes("fallback")
+        );
+
+        if (advertiser.tokenExpiresAt && (new Date(advertiser.tokenExpiresAt).getTime() - Date.now() < fifteenMinutes)) {
+          if (hasValidRefreshToken) {
+            try {
+              logger.info(`Refreshing token for advertiser: ${advertiser.advertiserId}`);
+              const refreshRes = await TikTokApiService.refreshAccessToken(advertiser.refreshToken);
+              
+              // Update advertiser token details
+              await ShopRepository.upsertAdvertiser({
+                advertiserId: advertiser.advertiserId,
+                name: advertiser.name,
+                accessToken: refreshRes.accessToken,
+                refreshToken: refreshRes.refreshToken,
+                tokenExpiresAt: new Date(Date.now() + refreshRes.expiresIn * 1000),
+                shopId: advertiser.shopId,
+              });
+              
+              token = refreshRes.accessToken;
+              logger.info(`Token successfully refreshed for: ${advertiser.advertiserId}`);
+            } catch (refreshErr: any) {
+              logger.warn(`Could not refresh token for advertiser ${advertiser.advertiserId}, attempting with current accessToken: ${refreshErr.message}`);
+            }
+          } else {
+            logger.info(`Advertiser ${advertiser.advertiserId} is using a long-lived/manual token without refresh_token. Proceeding with current accessToken.`);
+          }
         }
 
         // 1. Sync Campaign Performance
@@ -142,6 +156,18 @@ export class SyncService {
 
         syncedAccountsCount++;
         logger.info(`Successfully finished sync for advertiser: ${advertiser.advertiserId}`);
+
+        // If sync succeeded with current token, extend tokenExpiresAt so we don't repeat refresh checks
+        if (!hasValidRefreshToken && (!advertiser.tokenExpiresAt || new Date(advertiser.tokenExpiresAt).getTime() - Date.now() < fifteenMinutes)) {
+          await ShopRepository.upsertAdvertiser({
+            advertiserId: advertiser.advertiserId,
+            name: advertiser.name,
+            accessToken: token,
+            refreshToken: advertiser.refreshToken,
+            tokenExpiresAt: new Date(Date.now() + 365 * 86400 * 1000), // Extend 1 year
+            shopId: advertiser.shopId,
+          });
+        }
 
       } catch (error: any) {
         logger.error(`Failed to sync advertiser account ${advertiser.advertiserId}`, error);

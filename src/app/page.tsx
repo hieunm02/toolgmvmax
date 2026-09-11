@@ -1643,7 +1643,13 @@ export default function Dashboard() {
       const response = await fetch("/api/sync", { method: "POST" });
       const res = await response.json();
       if (res.success) {
-        showToast(lang === "vi" ? `Đồng bộ thành công! Số tài khoản cập nhật: ${res.data.syncedAccounts}` : `Sync successfully completed! Synced accounts: ${res.data.syncedAccounts}`, "success");
+        if (res.data.syncedAccounts > 0) {
+          showToast(lang === "vi" ? `Đồng bộ thành công! Đã cập nhật ${res.data.syncedAccounts} tài khoản.` : `Sync successful! Updated ${res.data.syncedAccounts} accounts.`, "success");
+        } else if (res.data.errors && res.data.errors.length > 0) {
+          showToast(lang === "vi" ? `Đồng bộ không thành công: ${res.data.errors[0].message}` : `Sync failed: ${res.data.errors[0].message}`, "error");
+        } else {
+          showToast(lang === "vi" ? `Đã đồng bộ xong (0 tài khoản hoạt động)` : `Sync complete (0 active accounts)`, "info");
+        }
         fetchData();
       } else {
         showToast(`Sync failed: ${JSON.stringify(res.error)}`, "error");
