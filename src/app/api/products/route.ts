@@ -76,16 +76,25 @@ export async function GET(request: Request) {
       };
     }
 
-    // 1. Fetch campaigns under the shop
     const campaigns = await prisma.campaign.findMany({
       where: shopId ? { advertiser: { shopId } } : {},
-      include: {
+      select: {
+        name: true,
         reports: {
-          where: reportFilter
+          where: reportFilter,
+          select: {
+            spend: true,
+            gmv: true,
+            orders: true
+          }
         },
         advertiser: {
-          include: {
-            shop: true
+          select: {
+            shop: {
+              select: {
+                name: true
+              }
+            }
           }
         }
       }

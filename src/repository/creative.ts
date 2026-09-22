@@ -95,14 +95,32 @@ export class CreativeRepository {
 
     return prisma.creative.findMany({
       where: whereClause,
-      include: {
+      select: {
+        id: true,
+        videoId: true,
+        name: true,
+        videoUrl: true,
         advertiser: {
-          include: {
-            shop: true,
+          select: {
+            name: true,
+            shop: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
         reports: {
           where: reportWhereClause,
+          select: {
+            spend: true,
+            gmv: true,
+            roi: true,
+            orders: true,
+            impressions: true,
+            clicks: true,
+            ctr: true,
+          }
         },
       },
     });

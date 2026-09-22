@@ -43,11 +43,15 @@ export async function GET(request: Request) {
       whereClause.date = { lte: e };
     }
 
-    // Get all campaign reports
     const reports = await prisma.campaignReport.findMany({
       where: whereClause,
-      include: {
-        campaign: true,
+      select: {
+        date: true,
+        spend: true,
+        gmv: true,
+        orders: true,
+        impressions: true,
+        clicks: true,
       },
     });
 
