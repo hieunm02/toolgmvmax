@@ -441,6 +441,17 @@ export default function Dashboard() {
   const [tempRoiThreshold, setTempRoiThreshold] = useState("3.0");
   const [tempMinSpend, setTempMinSpend] = useState("200000");
   const [tempMaxOrders, setTempMaxOrders] = useState("20");
+
+  // Separate Auto-relaunch states for Video and LIVE
+  const [relaunchConfigTab, setRelaunchConfigTab] = useState<"video" | "live">("video");
+  const [tempVideoEnabled, setTempVideoEnabled] = useState(true);
+  const [tempVideoRoi, setTempVideoRoi] = useState("3.0");
+  const [tempVideoMinSpend, setTempVideoMinSpend] = useState("200000");
+  const [tempVideoMaxOrders, setTempVideoMaxOrders] = useState("20");
+  const [tempLiveEnabled, setTempLiveEnabled] = useState(true);
+  const [tempLiveRoi, setTempLiveRoi] = useState("3.0");
+  const [tempLiveMinSpend, setTempLiveMinSpend] = useState("200000");
+  const [tempLiveMaxOrders, setTempLiveMaxOrders] = useState("20");
   const [selectedAdvertiser, setSelectedAdvertiser] = useState<string>("");
   const [isAdDropdownOpen, setIsAdDropdownOpen] = useState(false);
   const [dbAdvertisers, setDbAdvertisers] = useState<any[]>([]);
@@ -743,6 +754,16 @@ export default function Dashboard() {
   const [editingShopRoi, setEditingShopRoi] = useState("3.0");
   const [editingShopMinSpend, setEditingShopMinSpend] = useState("200000");
   const [editingShopMaxOrders, setEditingShopMaxOrders] = useState("20");
+
+  const [editingShopVideoEnabled, setEditingShopVideoEnabled] = useState(true);
+  const [editingShopVideoRoi, setEditingShopVideoRoi] = useState("3.0");
+  const [editingShopVideoMinSpend, setEditingShopVideoMinSpend] = useState("200000");
+  const [editingShopVideoMaxOrders, setEditingShopVideoMaxOrders] = useState("20");
+
+  const [editingShopLiveEnabled, setEditingShopLiveEnabled] = useState(true);
+  const [editingShopLiveRoi, setEditingShopLiveRoi] = useState("3.0");
+  const [editingShopLiveMinSpend, setEditingShopLiveMinSpend] = useState("200000");
+  const [editingShopLiveMaxOrders, setEditingShopLiveMaxOrders] = useState("20");
 
   const handleAddShop = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1088,9 +1109,17 @@ export default function Dashboard() {
         body: JSON.stringify({
           id: shopId,
           name: editingShopName,
-          autoRelaunchRoiThreshold: parseFloat(editingShopRoi),
-          autoRelaunchMinSpend: parseFloat(editingShopMinSpend),
-          autoRelaunchMaxOrders: parseInt(editingShopMaxOrders)
+          autoRelaunchRoiThreshold: parseFloat(editingShopVideoRoi || editingShopRoi),
+          autoRelaunchMinSpend: parseFloat(editingShopVideoMinSpend || editingShopMinSpend),
+          autoRelaunchMaxOrders: parseInt(editingShopVideoMaxOrders || editingShopMaxOrders),
+          autoRelaunchVideoEnabled: editingShopVideoEnabled,
+          autoRelaunchVideoRoi: parseFloat(editingShopVideoRoi || editingShopRoi),
+          autoRelaunchVideoMinSpend: parseFloat(editingShopVideoMinSpend || editingShopMinSpend),
+          autoRelaunchVideoMaxOrders: parseInt(editingShopVideoMaxOrders || editingShopMaxOrders),
+          autoRelaunchLiveEnabled: editingShopLiveEnabled,
+          autoRelaunchLiveRoi: parseFloat(editingShopLiveRoi || editingShopRoi),
+          autoRelaunchLiveMinSpend: parseFloat(editingShopLiveMinSpend || editingShopMinSpend),
+          autoRelaunchLiveMaxOrders: parseInt(editingShopLiveMaxOrders || editingShopMaxOrders),
         }),
       });
       const json = await res.json();
@@ -1444,29 +1473,53 @@ export default function Dashboard() {
         setTempRoiThreshold(currentShop.autoRelaunchRoiThreshold.toString());
         setTempMinSpend((currentShop.autoRelaunchMinSpend ?? 200000).toString());
         setTempMaxOrders((currentShop.autoRelaunchMaxOrders ?? 20).toString());
+
+        setTempVideoEnabled(currentShop.autoRelaunchVideoEnabled ?? true);
+        setTempVideoRoi((currentShop.autoRelaunchVideoRoi ?? currentShop.autoRelaunchRoiThreshold ?? 3.0).toString());
+        setTempVideoMinSpend((currentShop.autoRelaunchVideoMinSpend ?? currentShop.autoRelaunchMinSpend ?? 200000).toString());
+        setTempVideoMaxOrders((currentShop.autoRelaunchVideoMaxOrders ?? currentShop.autoRelaunchMaxOrders ?? 20).toString());
+
+        setTempLiveEnabled(currentShop.autoRelaunchLiveEnabled ?? true);
+        setTempLiveRoi((currentShop.autoRelaunchLiveRoi ?? currentShop.autoRelaunchRoiThreshold ?? 3.0).toString());
+        setTempLiveMinSpend((currentShop.autoRelaunchLiveMinSpend ?? currentShop.autoRelaunchMinSpend ?? 200000).toString());
+        setTempLiveMaxOrders((currentShop.autoRelaunchLiveMaxOrders ?? currentShop.autoRelaunchMaxOrders ?? 20).toString());
       }
     } else {
       setTempRoiThreshold("3.0");
       setTempMinSpend("200000");
       setTempMaxOrders("20");
+
+      setTempVideoEnabled(true);
+      setTempVideoRoi("3.0");
+      setTempVideoMinSpend("200000");
+      setTempVideoMaxOrders("20");
+
+      setTempLiveEnabled(true);
+      setTempLiveRoi("3.0");
+      setTempLiveMinSpend("200000");
+      setTempLiveMaxOrders("20");
     }
   }, [selectedShop, shops]);
 
   const handleSaveRoiThreshold = async () => {
     if (!selectedShop) return;
-    const thresholdValue = parseFloat(tempRoiThreshold);
-    const spendValue = parseFloat(tempMinSpend);
-    const ordersValue = parseInt(tempMaxOrders);
+    const vRoi = parseFloat(tempVideoRoi);
+    const vSpend = parseFloat(tempVideoMinSpend);
+    const vOrders = parseInt(tempVideoMaxOrders);
 
-    if (isNaN(thresholdValue) || thresholdValue <= 0) {
+    const lRoi = parseFloat(tempLiveRoi);
+    const lSpend = parseFloat(tempLiveMinSpend);
+    const lOrders = parseInt(tempLiveMaxOrders);
+
+    if (isNaN(vRoi) || vRoi <= 0 || isNaN(lRoi) || lRoi <= 0) {
       showToast(lang === "vi" ? "Mức ROI không hợp lệ!" : "Invalid ROI threshold!", "error");
       return;
     }
-    if (isNaN(spendValue) || spendValue < 0) {
+    if (isNaN(vSpend) || vSpend < 0 || isNaN(lSpend) || lSpend < 0) {
       showToast(lang === "vi" ? "Mức chi tiêu tối thiểu không hợp lệ!" : "Invalid spend limit!", "error");
       return;
     }
-    if (isNaN(ordersValue) || ordersValue < 0) {
+    if (isNaN(vOrders) || vOrders < 0 || isNaN(lOrders) || lOrders < 0) {
       showToast(lang === "vi" ? "Số lượng đơn hàng tối đa không hợp lệ!" : "Invalid max orders!", "error");
       return;
     }
@@ -1477,17 +1530,25 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: selectedShop,
-          autoRelaunchRoiThreshold: thresholdValue,
-          autoRelaunchMinSpend: spendValue,
-          autoRelaunchMaxOrders: ordersValue,
+          autoRelaunchRoiThreshold: vRoi,
+          autoRelaunchMinSpend: vSpend,
+          autoRelaunchMaxOrders: vOrders,
+          autoRelaunchVideoEnabled: tempVideoEnabled,
+          autoRelaunchVideoRoi: vRoi,
+          autoRelaunchVideoMinSpend: vSpend,
+          autoRelaunchVideoMaxOrders: vOrders,
+          autoRelaunchLiveEnabled: tempLiveEnabled,
+          autoRelaunchLiveRoi: lRoi,
+          autoRelaunchLiveMinSpend: lSpend,
+          autoRelaunchLiveMaxOrders: lOrders,
         }),
       });
       const json = await res.json();
       if (json.success) {
         showToast(
           lang === "vi"
-            ? `Cấu hình tự động lên camp đã được cập nhật thành công!`
-            : `Auto-relaunch conditions successfully updated!`,
+            ? `Cấu hình tự động lên camp Video & LIVE đã được cập nhật thành công!`
+            : `Auto-relaunch conditions for Video & LIVE successfully updated!`,
           "success"
         );
         fetchShops();
@@ -2516,55 +2577,151 @@ export default function Dashboard() {
 
                     {/* Auto-relaunch Dropdown Popover */}
                     {isRelaunchConfigOpen && (
-                      <div className="absolute right-0 top-full mt-2 z-[200] bg-[#111318] border border-[#1F232B] rounded-xl p-5 shadow-2xl flex flex-col gap-4 min-w-[300px] animate-slideDown backdrop-blur-md">
-                        <h4 className="text-[11px] font-bold tracking-wider uppercase font-mono text-indigo-400 border-b border-[#1F232B] pb-2">
-                          {lang === "vi" ? "CẤU HÌNH LÊN CAMP TỰ ĐỘNG" : "AUTO-RELAUNCH CONFIG"}
-                        </h4>
-                        
-                        {/* ROI Input */}
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Ngưỡng ROI <" : "Min ROI <"}</span>
-                          <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                            <input
-                              type="number"
-                              step="0.1"
-                              min="0.1"
-                              max="10"
-                              value={tempRoiThreshold}
-                              onChange={(e) => setTempRoiThreshold(e.target.value)}
-                              className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
-                            />
-                          </div>
+                      <div className="absolute right-0 top-full mt-2 z-[200] bg-[#111318] border border-[#1F232B] rounded-xl p-5 shadow-2xl flex flex-col gap-4 min-w-[340px] max-w-[380px] animate-slideDown backdrop-blur-md">
+                        <div className="flex items-center justify-between border-b border-[#1F232B] pb-2">
+                          <h4 className="text-[11px] font-bold tracking-wider uppercase font-mono text-indigo-400">
+                            {lang === "vi" ? "CẤU HÌNH LÊN CAMP TỰ ĐỘNG" : "AUTO-RELAUNCH CONFIG"}
+                          </h4>
+                          <span className="text-[10px] text-gray-500 font-mono truncate max-w-[140px]">
+                            {shops.find(s => s.id === selectedShop)?.name || ""}
+                          </span>
                         </div>
 
-                        {/* Spend Input */}
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
-                          <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2 py-1.5">
-                            <input
-                              type="text"
-                              value={formatNumberString(tempMinSpend)}
-                              onChange={(e) => setTempMinSpend(e.target.value.replace(/\D/g, ""))}
-                              className="w-20 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
-                            />
-                            <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
-                          </div>
+                        {/* Video vs LIVE Sub-tabs */}
+                        <div className="grid grid-cols-2 p-1 bg-[#15181F] rounded-lg border border-[#2B303C]/80 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setRelaunchConfigTab("video")}
+                            className={`py-1.5 px-2 rounded text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                              relaunchConfigTab === "video"
+                                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                                : "text-gray-400 hover:text-gray-200"
+                            }`}
+                          >
+                            <span>🎬</span>
+                            <span>{lang === "vi" ? "Chiến dịch Video" : "Video Ads"}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRelaunchConfigTab("live")}
+                            className={`py-1.5 px-2 rounded text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                              relaunchConfigTab === "live"
+                                ? "bg-rose-600 text-white shadow-md shadow-rose-600/30"
+                                : "text-gray-400 hover:text-gray-200"
+                            }`}
+                          >
+                            <span>🔴</span>
+                            <span>{lang === "vi" ? "Chiến dịch LIVE" : "LIVE Ads"}</span>
+                          </button>
                         </div>
 
-                        {/* Orders Input */}
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Lượng đơn <" : "Orders <"}</span>
-                          <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                            <input
-                              type="number"
-                              step="1"
-                              min="0"
-                              value={tempMaxOrders}
-                              onChange={(e) => setTempMaxOrders(e.target.value)}
-                              className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
-                            />
+                        {/* Switch Enabled / Disabled */}
+                        <div className="flex items-center justify-between gap-3 bg-[#15181F] border border-[#2B303C] rounded-lg px-3 py-2">
+                          <div className="flex flex-col">
+                            <span className="text-[11px] text-gray-200 font-bold">
+                              {relaunchConfigTab === "video"
+                                ? (lang === "vi" ? "Tự động lên camp Video" : "Auto-relaunch Video")
+                                : (lang === "vi" ? "Tự động lên camp LIVE" : "Auto-relaunch LIVE")}
+                            </span>
+                            <span className="text-[9px] text-gray-500 font-mono">
+                              {relaunchConfigTab === "video" ? "ShoppingAds: PRODUCT" : "ShoppingAds: LIVE"}
+                            </span>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (relaunchConfigTab === "video") {
+                                setTempVideoEnabled(!tempVideoEnabled);
+                              } else {
+                                setTempLiveEnabled(!tempLiveEnabled);
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded text-[10px] font-bold font-mono transition-all ${
+                              (relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled)
+                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                : "bg-gray-800 text-gray-400 border border-gray-700"
+                            }`}
+                          >
+                            {(relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled)
+                              ? (lang === "vi" ? "✓ ĐANG BẬT" : "✓ ENABLED")
+                              : (lang === "vi" ? "✕ ĐANG TẮT" : "✕ DISABLED")}
+                          </button>
                         </div>
+
+                        {/* Threshold inputs */}
+                        {(relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled) ? (
+                          <div className="flex flex-col gap-3">
+                            {/* ROI Input */}
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Ngưỡng ROI <" : "Min ROI <"}</span>
+                                <span className="text-[9px] text-gray-500">{lang === "vi" ? "Tự tắt & lên lại nếu ROI thấp hơn" : "Pause & relaunch if ROI below"}</span>
+                              </div>
+                              <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min="0.1"
+                                  max="10"
+                                  value={relaunchConfigTab === "video" ? tempVideoRoi : tempLiveRoi}
+                                  onChange={(e) => {
+                                    if (relaunchConfigTab === "video") setTempVideoRoi(e.target.value);
+                                    else setTempLiveRoi(e.target.value);
+                                  }}
+                                  className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Spend Input */}
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
+                                <span className="text-[9px] text-gray-500">{lang === "vi" ? "Đạt chi tiêu mới bắt đầu xét duyệt" : "Minimum spend required"}</span>
+                              </div>
+                              <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2 py-1.5">
+                                <input
+                                  type="text"
+                                  value={formatNumberString(relaunchConfigTab === "video" ? tempVideoMinSpend : tempLiveMinSpend)}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, "");
+                                    if (relaunchConfigTab === "video") setTempVideoMinSpend(val);
+                                    else setTempLiveMinSpend(val);
+                                  }}
+                                  className="w-20 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                                />
+                                <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
+                              </div>
+                            </div>
+
+                            {/* Orders Input */}
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Lượng đơn <" : "Orders <"}</span>
+                                <span className="text-[9px] text-gray-500">{lang === "vi" ? "Đạt từ số đơn này sẽ không bị tắt" : "Safety: keep if orders reach this"}</span>
+                              </div>
+                              <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                                <input
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={relaunchConfigTab === "video" ? tempVideoMaxOrders : tempLiveMaxOrders}
+                                  onChange={(e) => {
+                                    if (relaunchConfigTab === "video") setTempVideoMaxOrders(e.target.value);
+                                    else setTempLiveMaxOrders(e.target.value);
+                                  }}
+                                  className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-300 leading-relaxed">
+                            {lang === "vi"
+                              ? `Đang TẮT tự động lên camp cho ${relaunchConfigTab === "video" ? "Video" : "LIVE"}. Bot sẽ không tự tắt hoặc tái khởi tạo các chiến dịch loại này.`
+                              : `Auto-relaunch is DISABLED for ${relaunchConfigTab === "video" ? "Video" : "LIVE"}. Bot will not pause or clone campaigns of this type.`}
+                          </div>
+                        )}
 
                         {/* Save Button */}
                         <button
@@ -4263,37 +4420,94 @@ export default function Dashboard() {
                                         placeholder={lang === "vi" ? "Tên cửa hàng" : "Shop Name"}
                                         autoFocus
                                       />
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <div className="flex items-center gap-1.5 shrink-0">
+                                      {/* Video config row */}
+                                      <div className="flex flex-wrap items-center gap-2 p-2 bg-[#15181F] rounded border border-[#2B303C]/70">
+                                        <span className="text-[10px] font-bold text-indigo-400 font-mono shrink-0">🎬 Video:</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingShopVideoEnabled(!editingShopVideoEnabled)}
+                                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono transition-all ${
+                                            editingShopVideoEnabled ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-gray-800 text-gray-500 border border-gray-700"
+                                          }`}
+                                        >
+                                          {editingShopVideoEnabled ? "✓ BẬT" : "✕ TẮT"}
+                                        </button>
+                                        <div className="flex items-center gap-1 shrink-0">
                                           <span className="text-[10px] text-gray-400 font-mono">ROI &lt;</span>
                                           <input
                                             type="number"
                                             step="0.1"
                                             min="0.1"
                                             max="10"
-                                            value={editingShopRoi}
-                                            onChange={(e) => setEditingShopRoi(e.target.value)}
-                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-14 outline-none focus:border-indigo-500 text-center font-mono"
+                                            value={editingShopVideoRoi}
+                                            onChange={(e) => setEditingShopVideoRoi(e.target.value)}
+                                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-1.5 py-0.5 w-12 outline-none focus:border-indigo-500 text-center font-mono"
                                           />
                                         </div>
-                                        <div className="flex items-center gap-1.5 shrink-0">
+                                        <div className="flex items-center gap-1 shrink-0">
                                           <span className="text-[10px] text-gray-400 font-mono">Spend ≥</span>
                                           <input
                                             type="text"
-                                            value={formatNumberString(editingShopMinSpend)}
-                                            onChange={(e) => setEditingShopMinSpend(e.target.value.replace(/\D/g, ""))}
-                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-24 outline-none focus:border-indigo-500 text-center font-mono"
+                                            value={formatNumberString(editingShopVideoMinSpend)}
+                                            onChange={(e) => setEditingShopVideoMinSpend(e.target.value.replace(/\D/g, ""))}
+                                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-1.5 py-0.5 w-20 outline-none focus:border-indigo-500 text-center font-mono"
                                           />
                                         </div>
-                                        <div className="flex items-center gap-1.5 shrink-0">
+                                        <div className="flex items-center gap-1 shrink-0">
                                           <span className="text-[10px] text-gray-400 font-mono">Orders &lt;</span>
                                           <input
                                             type="number"
                                             step="1"
                                             min="0"
-                                            value={editingShopMaxOrders}
-                                            onChange={(e) => setEditingShopMaxOrders(e.target.value)}
-                                            className="bg-[#15181F] text-gray-200 text-xs border border-[#2B303C] rounded px-2 py-1 w-14 outline-none focus:border-indigo-500 text-center font-mono"
+                                            value={editingShopVideoMaxOrders}
+                                            onChange={(e) => setEditingShopVideoMaxOrders(e.target.value)}
+                                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-1.5 py-0.5 w-12 outline-none focus:border-indigo-500 text-center font-mono"
+                                          />
+                                        </div>
+                                      </div>
+
+                                      {/* Live config row */}
+                                      <div className="flex flex-wrap items-center gap-2 p-2 bg-[#15181F] rounded border border-[#2B303C]/70">
+                                        <span className="text-[10px] font-bold text-rose-400 font-mono shrink-0">🔴 LIVE:</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingShopLiveEnabled(!editingShopLiveEnabled)}
+                                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono transition-all ${
+                                            editingShopLiveEnabled ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-gray-800 text-gray-500 border border-gray-700"
+                                          }`}
+                                        >
+                                          {editingShopLiveEnabled ? "✓ BẬT" : "✕ TẮT"}
+                                        </button>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          <span className="text-[10px] text-gray-400 font-mono">ROI &lt;</span>
+                                          <input
+                                            type="number"
+                                            step="0.1"
+                                            min="0.1"
+                                            max="10"
+                                            value={editingShopLiveRoi}
+                                            onChange={(e) => setEditingShopLiveRoi(e.target.value)}
+                                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-1.5 py-0.5 w-12 outline-none focus:border-indigo-500 text-center font-mono"
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          <span className="text-[10px] text-gray-400 font-mono">Spend ≥</span>
+                                          <input
+                                            type="text"
+                                            value={formatNumberString(editingShopLiveMinSpend)}
+                                            onChange={(e) => setEditingShopLiveMinSpend(e.target.value.replace(/\D/g, ""))}
+                                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-1.5 py-0.5 w-20 outline-none focus:border-indigo-500 text-center font-mono"
+                                          />
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          <span className="text-[10px] text-gray-400 font-mono">Orders &lt;</span>
+                                          <input
+                                            type="number"
+                                            step="1"
+                                            min="0"
+                                            value={editingShopLiveMaxOrders}
+                                            onChange={(e) => setEditingShopLiveMaxOrders(e.target.value)}
+                                            className="bg-[#0E1015] text-gray-200 text-xs border border-[#2B303C] rounded px-1.5 py-0.5 w-12 outline-none focus:border-indigo-500 text-center font-mono"
                                           />
                                         </div>
                                       </div>
@@ -4326,16 +4540,17 @@ export default function Dashboard() {
                                     <span className="font-semibold text-white text-xs">{shop.name}</span>
                                     <div className="flex flex-col gap-1 mt-1">
                                       <span className="text-[10px] text-gray-500 font-mono">ID: {shop.tiktokShopId}</span>
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">
-                                          ROI &lt; {shop.autoRelaunchRoiThreshold.toFixed(1)}
-                                        </span>
-                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">
-                                          Spend ≥ {(shop.autoRelaunchMinSpend ?? 200000).toLocaleString('vi-VN')}đ
-                                        </span>
-                                        <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">
-                                          Orders &lt; {shop.autoRelaunchMaxOrders ?? 20}
-                                        </span>
+                                      <div className="flex flex-col gap-1 mt-1">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="text-[10px] font-mono bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded text-indigo-300">
+                                            🎬 Video: {shop.autoRelaunchVideoEnabled !== false ? `ROI < ${(shop.autoRelaunchVideoRoi ?? shop.autoRelaunchRoiThreshold ?? 3.0).toFixed(1)} | ≥ ${(shop.autoRelaunchVideoMinSpend ?? shop.autoRelaunchMinSpend ?? 200000).toLocaleString('vi-VN')}đ | < ${shop.autoRelaunchVideoMaxOrders ?? shop.autoRelaunchMaxOrders ?? 20} đơn` : (lang === "vi" ? "TẮT" : "OFF")}
+                                          </span>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          <span className="text-[10px] font-mono bg-rose-500/10 border border-rose-500/20 px-1.5 py-0.5 rounded text-rose-300">
+                                            🔴 LIVE: {shop.autoRelaunchLiveEnabled !== false ? `ROI < ${(shop.autoRelaunchLiveRoi ?? shop.autoRelaunchRoiThreshold ?? 3.0).toFixed(1)} | ≥ ${(shop.autoRelaunchLiveMinSpend ?? shop.autoRelaunchMinSpend ?? 200000).toLocaleString('vi-VN')}đ | < ${shop.autoRelaunchLiveMaxOrders ?? shop.autoRelaunchMaxOrders ?? 20} đơn` : (lang === "vi" ? "TẮT" : "OFF")}
+                                          </span>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -4351,6 +4566,16 @@ export default function Dashboard() {
                                       setEditingShopRoi(shop.autoRelaunchRoiThreshold.toString());
                                       setEditingShopMinSpend((shop.autoRelaunchMinSpend ?? 200000).toString());
                                       setEditingShopMaxOrders((shop.autoRelaunchMaxOrders ?? 20).toString());
+
+                                      setEditingShopVideoEnabled(shop.autoRelaunchVideoEnabled ?? true);
+                                      setEditingShopVideoRoi((shop.autoRelaunchVideoRoi ?? shop.autoRelaunchRoiThreshold ?? 3.0).toString());
+                                      setEditingShopVideoMinSpend((shop.autoRelaunchVideoMinSpend ?? shop.autoRelaunchMinSpend ?? 200000).toString());
+                                      setEditingShopVideoMaxOrders((shop.autoRelaunchVideoMaxOrders ?? shop.autoRelaunchMaxOrders ?? 20).toString());
+
+                                      setEditingShopLiveEnabled(shop.autoRelaunchLiveEnabled ?? true);
+                                      setEditingShopLiveRoi((shop.autoRelaunchLiveRoi ?? shop.autoRelaunchRoiThreshold ?? 3.0).toString());
+                                      setEditingShopLiveMinSpend((shop.autoRelaunchLiveMinSpend ?? shop.autoRelaunchMinSpend ?? 200000).toString());
+                                      setEditingShopLiveMaxOrders((shop.autoRelaunchLiveMaxOrders ?? shop.autoRelaunchMaxOrders ?? 20).toString());
                                     }}
                                     className="p-1.5 rounded bg-indigo-950/40 text-indigo-400 hover:bg-indigo-900/50 border border-indigo-800/20 text-[10px] font-bold uppercase transition-colors"
                                     title={lang === "vi" ? "Sửa" : "Edit"}

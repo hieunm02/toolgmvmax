@@ -25,9 +25,22 @@ model Shop {
   name                     String
   tiktokShopId             String       @unique
   status                   String       @default("ACTIVE")
+  // Legacy / Fallback Auto-Relaunch fields
   autoRelaunchRoiThreshold Float        @default(3.0)
   autoRelaunchMinSpend     Float        @default(200000.0)
   autoRelaunchMaxOrders    Int          @default(20)
+
+  // Video-specific Auto-Relaunch fields
+  autoRelaunchVideoEnabled   Boolean    @default(true)
+  autoRelaunchVideoRoi       Float      @default(3.0)
+  autoRelaunchVideoMinSpend  Float      @default(200000.0)
+  autoRelaunchVideoMaxOrders Int        @default(20)
+
+  // Live-specific Auto-Relaunch fields
+  autoRelaunchLiveEnabled    Boolean    @default(true)
+  autoRelaunchLiveRoi        Float      @default(3.0)
+  autoRelaunchLiveMinSpend   Float      @default(200000.0)
+  autoRelaunchLiveMaxOrders  Int        @default(20)
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
   users                    User[]       @relation("UserShops")

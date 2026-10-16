@@ -116,13 +116,32 @@ export class AlertEngineService {
     }
     */
 
-    // Rule 5: Automatic pause and relaunch for active campaigns with ROI < shop.autoRelaunchRoiThreshold and Spend >= shop.autoRelaunchMinSpend (with < shop.autoRelaunchMaxOrders orders)
-    const roiThreshold = shop.autoRelaunchRoiThreshold ?? 3.0;
-    const minSpend = shop.autoRelaunchMinSpend ?? 200000.0;
-    const maxOrders = shop.autoRelaunchMaxOrders ?? 20;
-
+    // Rule 5: Automatic pause and relaunch for active campaigns with separate configs for VIDEO and LIVE
     for (const campaign of todayCampaigns) {
       if (campaign.status !== "CAMPAIGN_STATUS_ENABLE") continue;
+
+      const isLive = campaign.shoppingAdsType === "LIVE";
+      const typeLabel = isLive ? "LIVE" : "VIDEO";
+
+      const isEnabled = isLive
+        ? (shop.autoRelaunchLiveEnabled ?? true)
+        : (shop.autoRelaunchVideoEnabled ?? true);
+
+      if (!isEnabled) {
+        continue; // Auto-relaunch is disabled for this campaign type
+      }
+
+      const roiThreshold = isLive
+        ? (shop.autoRelaunchLiveRoi ?? shop.autoRelaunchRoiThreshold ?? 3.0)
+        : (shop.autoRelaunchVideoRoi ?? shop.autoRelaunchRoiThreshold ?? 3.0);
+
+      const minSpend = isLive
+        ? (shop.autoRelaunchLiveMinSpend ?? shop.autoRelaunchMinSpend ?? 200000.0)
+        : (shop.autoRelaunchVideoMinSpend ?? shop.autoRelaunchMinSpend ?? 200000.0);
+
+      const maxOrders = isLive
+        ? (shop.autoRelaunchLiveMaxOrders ?? shop.autoRelaunchMaxOrders ?? 20)
+        : (shop.autoRelaunchVideoMaxOrders ?? shop.autoRelaunchMaxOrders ?? 20);
 
       const campSpend = campaign.reports.reduce((sum, r) => sum + r.spend, 0);
       const campGmv = campaign.reports.reduce((sum, r) => sum + r.gmv, 0);
@@ -132,16 +151,16 @@ export class AlertEngineService {
       if (campSpend >= minSpend && campRoi < roiThreshold) {
         if (campOrders >= maxOrders) continue; // Safety guard: ignore if campaign has >= maxOrders orders today
 
-        logger.info(`Auto-relaunching campaign ${campaign.campaignId} due to low ROI (${campRoi.toFixed(2)}x, threshold: ${roiThreshold.toFixed(1)}x), spend (${campSpend.toLocaleString('vi-VN')}đ, threshold: ${minSpend.toLocaleString('vi-VN')}đ) and orders (${campOrders}, threshold: < ${maxOrders})`);
+        logger.info(`Auto-relaunching [${typeLabel}] campaign ${campaign.campaignId} due to low ROI (${campRoi.toFixed(2)}x, threshold: ${roiThreshold.toFixed(1)}x), spend (${campSpend.toLocaleString('vi-VN')}đ, threshold: ${minSpend.toLocaleString('vi-VN')}đ) and orders (${campOrders}, threshold: < ${maxOrders})`);
 
         const relaunchResult = await CampaignRelaunchService.relaunchCampaign(campaign.campaignId);
 
         if (relaunchResult.success) {
-          const message = `Tự động tạm dừng chiến dịch "${campaign.name}" (${campaign.campaignId}) và khởi tạo chiến dịch mới tương tự V2 (${relaunchResult.newCampaignId}) do ROI thấp: ${campRoi.toFixed(2)}x (Mức cấu hình: < ${roiThreshold.toFixed(1)}x, Chi tiêu: ${campSpend.toLocaleString('vi-VN')}đ, Đơn hàng: ${campOrders}). [CAMPAIGN_ID:${campaign.campaignId}]`;
+          const message = `Tự động tạm dừng chiến dịch [${typeLabel}] "${campaign.name}" (${campaign.campaignId}) và khởi tạo chiến dịch mới tương tự V2 (${relaunchResult.newCampaignId}) do ROI thấp: ${campRoi.toFixed(2)}x (Mức cấu hình ${typeLabel}: < ${roiThreshold.toFixed(1)}x, Chi tiêu: ${campSpend.toLocaleString('vi-VN')}đ, Đơn hàng: ${campOrders}). [CAMPAIGN_ID:${campaign.campaignId}]`;
           
-          await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", message, `ROI < ${roiThreshold.toFixed(1)} AND SPEND >= ${minSpend} AND ORDERS < ${maxOrders}`, campRoi);
+          await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", message, `[${typeLabel}] ROI < ${roiThreshold.toFixed(1)} AND SPEND >= ${minSpend} AND ORDERS < ${maxOrders}`, campRoi);
         } else {
-          logger.error(`Failed to auto-relaunch campaign ${campaign.campaignId}: ${relaunchResult.error}`);
+          logger.error(`Failed to auto-relaunch [${typeLabel}] campaign ${campaign.campaignId}: ${relaunchResult.error}`);
         }
       }
     }
