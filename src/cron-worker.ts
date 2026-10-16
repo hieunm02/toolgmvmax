@@ -2,8 +2,8 @@ import { SyncService } from "./service/sync";
 import { TelegramListenerService } from "./service/telegram-listener";
 import { logger } from "./lib/logger";
 
-// Increase to 15 minutes to give enough time for sync to complete before next run
-const SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+// Run cron sync every 5 minutes to quickly detect low ROI and auto-relaunch
+const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Lock to prevent overlapping sync runs from stacking up and overloading CPU
 let isSyncRunning = false;
