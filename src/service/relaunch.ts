@@ -11,7 +11,8 @@ export class CampaignRelaunchService {
     campaignId: string,
     alertId?: string,
     customBudget?: number,
-    customRoasBid?: number
+    customRoasBid?: number,
+    force?: boolean
   ): Promise<{ success: boolean; newCampaignId?: string; error?: string }> {
     try {
       logger.info(`Campaign Relaunch Service triggered for campaign ID: ${campaignId}`);
@@ -34,7 +35,7 @@ export class CampaignRelaunchService {
 
       const { accessToken, advertiserId } = oldCampaign.advertiser;
 
-      // Check safety rules: less than 20 orders today
+      // Check safety rules: less than 20 orders today (unless forced by manual user action)
       const todayStr = getVietnamDateString();
       const reportToday = await prisma.campaignReport.findFirst({
         where: {
@@ -44,7 +45,7 @@ export class CampaignRelaunchService {
       });
 
       const ordersToday = reportToday ? reportToday.orders : 0;
-      if (ordersToday >= 20) {
+      if (!force && ordersToday >= 20) {
         logger.warn(`Relaunch blocked by safety rule: Campaign ${campaignId} has ${ordersToday} orders today.`);
         return {
           success: false,

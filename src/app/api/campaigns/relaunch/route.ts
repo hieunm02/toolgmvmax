@@ -3,7 +3,7 @@ import { CampaignRelaunchService } from "../../../../service/relaunch";
 
 export async function POST(request: Request) {
   try {
-    const { campaignId, alertId, budget, roasBid } = await request.json();
+    const { campaignId, alertId, budget, roasBid, force } = await request.json();
 
     if (!campaignId) {
       return NextResponse.json({ success: false, error: "Missing campaignId" }, { status: 400 });
@@ -13,7 +13,8 @@ export async function POST(request: Request) {
       campaignId,
       alertId,
       budget !== undefined ? Number(budget) : undefined,
-      roasBid !== undefined ? Number(roasBid) : undefined
+      roasBid !== undefined ? Number(roasBid) : undefined,
+      force !== undefined ? Boolean(force) : true
     );
 
     if (!result.success) {

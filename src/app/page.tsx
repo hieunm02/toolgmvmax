@@ -2054,6 +2054,44 @@ export default function Dashboard() {
     }
   };
 
+  // Quick 1-click Auto-Relaunch identical V2 campaign
+  const handleQuickAutoRelaunch = async (campaignId: string, campaignName: string) => {
+    const confirmMsg = lang === "vi"
+      ? `Bạn có chắc muốn tự động tắt chiến dịch "${campaignName}" và khởi tạo chiến dịch mới V2 giống hệt (ngân sách, đối tượng, video/live...) không?`
+      : `Are you sure you want to pause "${campaignName}" and launch an identical V2 campaign?`;
+    
+    if (!window.confirm(confirmMsg)) return;
+
+    setRelaunchingId(campaignId);
+    try {
+      const response = await fetch("/api/campaigns/relaunch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId, force: true }),
+      });
+      const res = await response.json();
+      if (res.success) {
+        showToast(
+          lang === "vi" 
+            ? `Lên lại camp thành công! ID chiến dịch mới: ${res.data.newCampaignId}` 
+            : `Relaunch successful! New Campaign ID: ${res.data.newCampaignId}`, 
+          "success"
+        );
+        fetchData(startDate, endDate, true);
+      } else {
+        showToast(
+          lang === "vi" ? `Lỗi lên lại camp: ${res.error}` : `Relaunch failed: ${res.error}`, 
+          "error"
+        );
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(lang === "vi" ? "Lỗi kết nối máy chủ!" : "Server connection error!", "error");
+    } finally {
+      setRelaunchingId(null);
+    }
+  };
+
   // Campaign relaunch handler
   const handleRelaunchCampaign = async (campaignId: string, alertId?: string) => {
     const localCamp = campaigns.find(c => c.campaignId === campaignId);
@@ -3226,6 +3264,32 @@ export default function Dashboard() {
                                       )}
                                     </div>
                                   )}
+
+                                  {/* Quick Auto-Relaunch Button directly under the campaign */}
+                                  <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleQuickAutoRelaunch(camp.campaignId, camp.name)}
+                                      disabled={relaunchingId === camp.campaignId}
+                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/40 text-[10px] font-bold tracking-wide transition-all shadow-sm disabled:opacity-50 active:scale-[0.98]"
+                                      title={lang === "vi" ? "Tự động tắt chiến dịch này và khởi tạo chiến dịch V2 mới giống hệt" : "Pause this campaign and auto-relaunch an identical V2"}
+                                    >
+                                      {relaunchingId === camp.campaignId ? (
+                                        <>
+                                          <svg className="animate-spin h-3 w-3 text-white" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                          </svg>
+                                          <span>{lang === "vi" ? "Đang lên camp..." : "Relaunching..."}</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span>⚡</span>
+                                          <span>{lang === "vi" ? "Lên lại camp mới (V2)" : "Relaunch V2"}</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
                               </td>
                               <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
@@ -3265,18 +3329,6 @@ export default function Dashboard() {
                                   <span className={camp.roi >= 3.5 ? "text-emerald-400" : "text-rose-400"}>
                                     {camp.roi.toFixed(2)}x
                                   </span>
-                                  {camp.status === "CAMPAIGN_STATUS_ENABLE" && camp.spend >= 200000 && camp.roi < 3.0 && camp.orders < 20 && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleRelaunchCampaign(camp.campaignId);
-                                      }}
-                                      disabled={relaunchingId === camp.campaignId}
-                                      className="text-[9px] font-sans font-bold px-2 py-0.5 rounded bg-rose-950 text-rose-400 hover:bg-rose-900 border border-rose-900/50 disabled:opacity-50 transition-colors"
-                                    >
-                                      {relaunchingId === camp.campaignId ? (lang === "vi" ? "Đang lên..." : "Relaunching...") : (lang === "vi" ? "Tái khởi tạo" : "Relaunch")}
-                                    </button>
-                                  )}
                                 </div>
                               </td>
                               <td className="px-6 py-4 text-right font-mono">{camp.orders}</td>
