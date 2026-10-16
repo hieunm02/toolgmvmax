@@ -29,7 +29,12 @@ export async function GET(request: Request) {
     const buckets: Date[] = [];
     const intervalMs = 30 * 60 * 1000;
 
-    if (needSnapshots && campaigns.length > 0) {
+    // Only query snapshots for campaigns that actually have reports/spend to avoid heavy DB scans and huge JSON payloads
+    const activeCampaignIds = campaigns
+      .filter((c) => c.reports && c.reports.some((r) => r.spend > 0))
+      .map((c) => c.id);
+
+    if (needSnapshots && activeCampaignIds.length > 0) {
       let snapshotStart = new Date();
       let snapshotEnd = new Date();
 
@@ -46,7 +51,7 @@ export async function GET(request: Request) {
 
       const snapshots = await prisma.campaignSpendSnapshot.findMany({
         where: {
-          campaignId: { in: campaigns.map((c) => c.id) },
+          campaignId: { in: activeCampaignIds },
           timestamp: {
             gte: snapshotStart,
             lte: snapshotEnd,
@@ -124,8 +129,8 @@ export async function GET(request: Request) {
 
       const campaignSnapshots = snapshotsByCamp.get(c.id) || [];
 
-      // Compute 30-minute interval spend speed (only if snapshots needed)
-      const campaignHistory = needSnapshots
+      // Compute 30-minute interval spend speed (only if snapshots needed and available)
+      const campaignHistory = (needSnapshots && campaignSnapshots.length > 0)
         ? buckets.map((bucket, idx) => {
             const currentSpend = getCumulativeSpendAt(bucket, campaignSnapshots);
             let deltaSpend = 0;
