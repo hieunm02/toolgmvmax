@@ -1,4 +1,5 @@
 import { logger } from "./logger";
+import { prisma } from "./db";
 
 export interface TikTokCampaignData {
   campaignId: string;
@@ -354,45 +355,100 @@ export class TikTokApiService {
                 }
               } while (todayPage <= todayTotalPage);
 
-              // Fetch metadata for each campaign in parallel
-                const metadataPromises = gmvCampaignIds.map(async (cid: string) => {
-                  try {
-                    const infoUrl = `${this.getBaseUrl()}/campaign/gmv_max/info/?advertiser_id=${advertiserId}&campaign_id=${cid}`;
-                    const infoResponse = await fetch(infoUrl, {
-                      headers: { "Access-Token": accessToken },
-                    });
-                    const infoData = await infoResponse.json();
-                    if (infoData.code === 0 && infoData.data) {
-                      const info = infoData.data;
-                      const stats = todayGmvMetricsMap.get(cid) || {};
-                      return {
-                        campaignId: cid,
-                        name: info.campaign_name || `GMV Max Campaign ${cid}`,
-                        status: info.operation_status === "ENABLE" ? "CAMPAIGN_STATUS_ENABLE" : "CAMPAIGN_STATUS_DISABLE",
-                        objectiveType: "OUTFLOW_GMV_MAX",
-                        budget: Number(info.budget || 0),
-                        budgetMode: "BUDGET_MODE_DAY",
-                        spend: Number(stats.cost || 0),
-                        gmv: Number(stats.gross_revenue || 0),
-                        orders: Number(stats.orders || 0),
-                        impressions: 0,
-                        clicks: 0,
-                        shoppingAdsType: info.shopping_ads_type || "PRODUCT",
-                        roasBid: Number(info.roas_bid || 0.0),
-                      };
-                    }
-                  } catch (e) {
-                    logger.error(`Error fetching metadata for GMV Max campaign ${cid}`, e);
-                  }
-                  return null;
+              // 1. Query existing campaigns for this advertiser from local DB to avoid refetching static metadata for thousands of campaigns
+              const dbCampaignMap = new Map<string, any>();
+              try {
+                const existingDbCampaigns = await prisma.campaign.findMany({
+                  where: { advertiser: { advertiserId } },
+                  select: {
+                    campaignId: true,
+                    name: true,
+                    status: true,
+                    budget: true,
+                    budgetMode: true,
+                    shoppingAdsType: true,
+                    roasBid: true,
+                  },
                 });
+                for (const c of existingDbCampaigns) {
+                  dbCampaignMap.set(c.campaignId, c);
+                }
+              } catch (dbErr) {
+                logger.warn("Could not load existing campaigns from DB", dbErr);
+              }
 
-                const metaResults = await Promise.all(metadataPromises);
-                for (const camp of metaResults) {
+              // Identify campaigns needing fresh info call from TikTok:
+              // 1) Campaigns that have activity today
+              // 2) New campaigns not in dbCampaignMap
+              const idsNeedingInfo: string[] = [];
+              for (const cid of gmvCampaignIds) {
+                const hasActivityToday = todayGmvMetricsMap.has(cid);
+                const existsInDb = dbCampaignMap.has(cid);
+                if (hasActivityToday || !existsInDb) {
+                  idsNeedingInfo.push(cid);
+                } else {
+                  const existing = dbCampaignMap.get(cid);
+                  gmvMaxCampaigns.push({
+                    campaignId: cid,
+                    name: existing.name || `GMV Max Campaign ${cid}`,
+                    status: existing.status || "CAMPAIGN_STATUS_ENABLE",
+                    objectiveType: "OUTFLOW_GMV_MAX",
+                    budget: Number(existing.budget || 0),
+                    budgetMode: existing.budgetMode || "BUDGET_MODE_DAY",
+                    spend: 0,
+                    gmv: 0,
+                    orders: 0,
+                    impressions: 0,
+                    clicks: 0,
+                    shoppingAdsType: existing.shoppingAdsType || "PRODUCT",
+                    roasBid: Number(existing.roasBid || 0.0),
+                  });
+                }
+              }
+
+              // Fetch metadata in small concurrent chunks (10 at a time) to avoid socket exhaustion and rate limits
+              const CHUNK_SIZE = 10;
+              for (let i = 0; i < idsNeedingInfo.length; i += CHUNK_SIZE) {
+                const chunk = idsNeedingInfo.slice(i, i + CHUNK_SIZE);
+                const chunkResults = await Promise.all(
+                  chunk.map(async (cid: string) => {
+                    try {
+                      const infoUrl = `${this.getBaseUrl()}/campaign/gmv_max/info/?advertiser_id=${advertiserId}&campaign_id=${cid}`;
+                      const infoResponse = await fetch(infoUrl, {
+                        headers: { "Access-Token": accessToken },
+                      });
+                      const infoData = await infoResponse.json();
+                      if (infoData.code === 0 && infoData.data) {
+                        const info = infoData.data;
+                        const stats = todayGmvMetricsMap.get(cid) || {};
+                        return {
+                          campaignId: cid,
+                          name: info.campaign_name || `GMV Max Campaign ${cid}`,
+                          status: info.operation_status === "ENABLE" ? "CAMPAIGN_STATUS_ENABLE" : "CAMPAIGN_STATUS_DISABLE",
+                          objectiveType: "OUTFLOW_GMV_MAX",
+                          budget: Number(info.budget || 0),
+                          budgetMode: "BUDGET_MODE_DAY",
+                          spend: Number(stats.cost || 0),
+                          gmv: Number(stats.gross_revenue || 0),
+                          orders: Number(stats.orders || 0),
+                          impressions: 0,
+                          clicks: 0,
+                          shoppingAdsType: info.shopping_ads_type || "PRODUCT",
+                          roasBid: Number(info.roas_bid || 0.0),
+                        };
+                      }
+                    } catch (e) {
+                      logger.error(`Error fetching metadata for GMV Max campaign ${cid}`, e);
+                    }
+                    return null;
+                  })
+                );
+                for (const camp of chunkResults) {
                   if (camp) {
                     gmvMaxCampaigns.push(camp);
                   }
                 }
+              }
             }
           }
         }

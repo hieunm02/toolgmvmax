@@ -91,8 +91,8 @@ export class SyncService {
             conversionRate: conversionRate,
           });
 
-          // Save intra-day 30-minute spend snapshot (only for current day sync)
-          if (!customDate || customDate === getVietnamDateString()) {
+          // Save intra-day 30-minute spend snapshot (only for current day sync and active spenders)
+          if ((!customDate || customDate === getVietnamDateString()) && camp.spend > 0) {
             await prisma.campaignSpendSnapshot.create({
               data: {
                 campaignId: campaignRecord.id,
