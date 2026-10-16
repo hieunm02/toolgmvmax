@@ -490,6 +490,7 @@ export default function Dashboard() {
 
   const [startDate, setStartDate] = useState<string>(getTodayString);
   const [endDate, setEndDate] = useState<string>(getTodayString);
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string>("");
   const [campaignPage, setCampaignPage] = useState<number>(1);
   const [isRelaunchConfigOpen, setIsRelaunchConfigOpen] = useState<boolean>(false);
   const [isFilterBarOpen, setIsFilterBarOpen] = useState<boolean>(false);
@@ -1602,6 +1603,7 @@ export default function Dashboard() {
       if (prod.success) setProductsData(prod.data);
       if (creat.success) setCreativesData(creat.data);
       if (alert.success) setAlerts(alert.data);
+      setLastUpdatedTime(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch (e) {
       console.error("Failed to load dashboard metrics", e);
     } finally {
@@ -2972,7 +2974,9 @@ export default function Dashboard() {
             ))}
           </div>
           <div className="text-[10px] text-gray-500 font-mono flex-shrink-0 self-end md:self-auto pb-1 md:pb-0">
-            {lang === "vi" ? "Đồng bộ tự động: 5 phút / lần" : t.lastUpdate}
+            {lang === "vi" 
+              ? `Đồng bộ tự động: 5 phút / lần${lastUpdatedTime ? ` • Cập nhật: ${lastUpdatedTime}` : ""}` 
+              : `${t.lastUpdate}${lastUpdatedTime ? ` • ${lastUpdatedTime}` : ""}`}
           </div>
         </section>
 
