@@ -1749,7 +1749,11 @@ export default function Dashboard() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const response = await fetch("/api/sync", { method: "POST" });
+      const response = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: startDate || undefined }),
+      });
       const res = await response.json();
       if (res.success) {
         if (res.data.syncedAccounts > 0) {

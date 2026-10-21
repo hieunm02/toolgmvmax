@@ -128,7 +128,15 @@ export class SyncService {
           });
         }
 
-        // 3. Sync Creative Performance
+        // 3. Sync Creative Performance (Only scan active product campaigns that generated spend/orders on target date)
+        const activeProductCampaignIds = campaignDataList
+          .filter(
+            (c) =>
+              (c.spend > 0 || c.gmv > 0 || c.orders > 0) &&
+              c.shoppingAdsType !== "LIVE"
+          )
+          .map((c) => c.campaignId);
+
         // Check shop's inhouseChannels to automatically classify video channelType
         const shop = advertiser.shopId ? await ShopRepository.findById(advertiser.shopId) : null;
         const inhouseChannelsRaw = (shop as any)?.inhouseChannels || "";
@@ -137,7 +145,12 @@ export class SyncService {
           .map((s: string) => s.trim().toLowerCase().replace(/^@/, ""))
           .filter(Boolean);
 
-        const creativeDataList = await TikTokApiService.getCreativePerformance(token, advertiser.advertiserId, todayStr);
+        const creativeDataList = await TikTokApiService.getCreativePerformance(
+          token,
+          advertiser.advertiserId,
+          todayStr,
+          activeProductCampaignIds
+        );
         for (const creative of creativeDataList) {
           const author = (creative.authorUsername || "").toLowerCase().replace(/^@/, "");
           const nameLower = (creative.name || "").toLowerCase();

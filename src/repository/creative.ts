@@ -18,6 +18,13 @@ export class CreativeRepository {
     authorName?: string | null;
     channelType?: string | null;
   }): Promise<Creative> {
+    const existing = await prisma.creative.findUnique({
+      where: { videoId: data.videoId },
+      select: { channelType: true },
+    });
+
+    const channelTypeToSet = existing?.channelType || data.channelType || "AFFILIATE";
+
     return prisma.creative.upsert({
       where: { videoId: data.videoId },
       update: {
@@ -26,7 +33,7 @@ export class CreativeRepository {
         advertiserId: data.advertiserId,
         ...(data.authorUsername !== undefined ? { authorUsername: data.authorUsername } : {}),
         ...(data.authorName !== undefined ? { authorName: data.authorName } : {}),
-        ...(data.channelType !== undefined ? { channelType: data.channelType } : {}),
+        channelType: channelTypeToSet,
       },
       create: {
         videoId: data.videoId,
@@ -35,7 +42,7 @@ export class CreativeRepository {
         advertiserId: data.advertiserId,
         authorUsername: data.authorUsername || null,
         authorName: data.authorName || null,
-        channelType: data.channelType || "AFFILIATE",
+        channelType: channelTypeToSet,
       },
     });
   }

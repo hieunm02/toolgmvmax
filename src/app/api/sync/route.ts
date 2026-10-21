@@ -2,9 +2,19 @@ import { NextResponse } from "next/server";
 import { SyncService } from "../../../service/sync";
 import { getVietnamDateString } from "../../../lib/date-utils";
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const today = getVietnamDateString();
+    let customDate: string | undefined;
+    try {
+      const body = await req.json();
+      if (body?.date) {
+        customDate = String(body.date).trim();
+      }
+    } catch (e) {
+      // Body not provided or not JSON
+    }
+
+    const targetDate = customDate || getVietnamDateString();
 
     // Calculate yesterday in Asia/Ho_Chi_Minh
     const now = new Date();
@@ -12,13 +22,15 @@ export async function POST() {
     const yPad = (n: number) => n.toString().padStart(2, "0");
     const yesterday = `${yesterdayDate.getFullYear()}-${yPad(yesterdayDate.getMonth() + 1)}-${yPad(yesterdayDate.getDate())}`;
 
-    // Sync today first so UI responds immediately within a few seconds
-    const result = await SyncService.syncAllAccounts(today);
+    // Sync target date synchronously so UI responds immediately
+    const result = await SyncService.syncAllAccounts(targetDate);
 
-    // Sync yesterday in background asynchronously without blocking the user interface
-    SyncService.syncAllAccounts(yesterday).catch((yErr) => {
-      console.warn("Background yesterday sync error:", yErr?.message || yErr);
-    });
+    // If target date is today, also refresh yesterday in the background asynchronously
+    if (!customDate || customDate === getVietnamDateString()) {
+      SyncService.syncAllAccounts(yesterday).catch((yErr) => {
+        console.warn("Background yesterday sync error:", yErr?.message || yErr);
+      });
+    }
 
     return NextResponse.json({ success: true, data: result });
   } catch (error: any) {

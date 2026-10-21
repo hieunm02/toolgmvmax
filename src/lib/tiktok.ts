@@ -285,78 +285,49 @@ export class TikTokApiService {
           const uniqueStoreIds = Array.from(new Set(storeIds));
 
           for (const storeId of uniqueStoreIds) {
-            // Compute 30 days ago for discovery report
-            const startDiscoveryDate = new Date(new Date(date).getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-
-            // Query 30-day discovery report to find campaign IDs with pagination support
+            // Query performance report ONLY for the target date (avoiding 30-day scans of thousands of dead campaigns)
             const dimensions = ["campaign_id"];
             const metrics = ["roi", "orders", "cost", "gross_revenue"];
-            const discoveryDimensions = JSON.stringify(dimensions);
-            const discoveryMetrics = JSON.stringify(metrics);
+            const reportDimensions = JSON.stringify(dimensions);
+            const reportMetrics = JSON.stringify(metrics);
 
-            let page = 1;
-            let totalPage = 1;
-            const gmvCampaignIdsList: string[] = [];
+            const todayGmvMetricsMap = new Map<string, any>();
+            let todayPage = 1;
+            let todayTotalPage = 1;
 
             do {
               try {
-                const discoveryUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(discoveryDimensions)}&metrics=${encodeURIComponent(discoveryMetrics)}&start_date=${startDiscoveryDate}&end_date=${date}&page_size=100&page=${page}`;
+                const todayReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(reportDimensions)}&metrics=${encodeURIComponent(reportMetrics)}&start_date=${date}&end_date=${date}&page_size=100&page=${todayPage}`;
 
-                const discoveryResponse = await fetch(discoveryUrl, {
+                const todayReportResponse = await fetch(todayReportUrl, {
                   headers: { "Access-Token": accessToken },
                 });
-                const discoveryData = await discoveryResponse.json();
+                const todayReportData = await todayReportResponse.json();
 
-                if (discoveryData.code === 0 && discoveryData.data && discoveryData.data.list) {
-                  const ids = discoveryData.data.list.map((item: any) => item.dimensions?.campaign_id).filter(Boolean);
-                  gmvCampaignIdsList.push(...ids);
-                  totalPage = discoveryData.data.page_info?.total_page || 1;
-                  page++;
+                if (todayReportData.code === 0 && todayReportData.data && todayReportData.data.list) {
+                  for (const item of todayReportData.data.list) {
+                    const cid = item.dimensions?.campaign_id;
+                    const cost = Number(item.metrics?.cost || 0);
+                    const grossRevenue = Number(item.metrics?.gross_revenue || 0);
+                    const orders = Number(item.metrics?.orders || 0);
+                    // Filter: Only track campaigns with spend, revenue, or orders on this date!
+                    if (cid && (cost > 0 || grossRevenue > 0 || orders > 0)) {
+                      todayGmvMetricsMap.set(cid, item.metrics);
+                    }
+                  }
+                  todayTotalPage = todayReportData.data.page_info?.total_page || 1;
+                  todayPage++;
                 } else {
-                  logger.warn(`GMV Max discovery query failed or empty on page ${page}`, discoveryData);
+                  logger.warn(`GMV Max today report query empty or completed on page ${todayPage}`);
                   break;
                 }
-              } catch (discoveryErr) {
-                logger.error(`Error fetching GMV Max discovery page ${page}`, discoveryErr);
+              } catch (todayReportErr) {
+                logger.error(`Error fetching GMV Max today report page ${todayPage}`, todayReportErr);
                 break;
               }
-            } while (page <= totalPage);
+            } while (todayPage <= todayTotalPage);
 
-            const gmvCampaignIds = Array.from(new Set(gmvCampaignIdsList));
-
-            if (gmvCampaignIds.length > 0) {
-              // Query today's performance report for this store ID with pagination support
-              const todayGmvMetricsMap = new Map<string, any>();
-              let todayPage = 1;
-              let todayTotalPage = 1;
-
-              do {
-                try {
-                  const todayReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(discoveryDimensions)}&metrics=${encodeURIComponent(discoveryMetrics)}&start_date=${date}&end_date=${date}&page_size=100&page=${todayPage}`;
-
-                  const todayReportResponse = await fetch(todayReportUrl, {
-                    headers: { "Access-Token": accessToken },
-                  });
-                  const todayReportData = await todayReportResponse.json();
-
-                  if (todayReportData.code === 0 && todayReportData.data && todayReportData.data.list) {
-                    for (const item of todayReportData.data.list) {
-                      const cid = item.dimensions?.campaign_id;
-                      if (cid) {
-                        todayGmvMetricsMap.set(cid, item.metrics);
-                      }
-                    }
-                    todayTotalPage = todayReportData.data.page_info?.total_page || 1;
-                    todayPage++;
-                  } else {
-                    logger.warn(`GMV Max today report query failed or empty on page ${todayPage}`, todayReportData);
-                    break;
-                  }
-                } catch (todayReportErr) {
-                  logger.error(`Error fetching GMV Max today report page ${todayPage}`, todayReportErr);
-                  break;
-                }
-              } while (todayPage <= todayTotalPage);
+            const activeGmvCampaignIds = Array.from(todayGmvMetricsMap.keys());
 
               // 1. Query existing campaigns for this advertiser from local DB to avoid refetching static metadata for thousands of campaigns
               const dbCampaignMap = new Map<string, any>();
@@ -380,16 +351,12 @@ export class TikTokApiService {
                 logger.warn("Could not load existing campaigns from DB", dbErr);
               }
 
-              // Identify campaigns needing fresh info call from TikTok:
-              // 1) Campaigns that have activity today
-              // 2) New campaigns not in dbCampaignMap
+              // Build GMV Max campaign data for active spending campaigns
               const idsNeedingInfo: string[] = [];
-              for (const cid of gmvCampaignIds) {
-                const hasActivityToday = todayGmvMetricsMap.has(cid);
+              for (const cid of activeGmvCampaignIds) {
+                const stats = todayGmvMetricsMap.get(cid) || {};
                 const existsInDb = dbCampaignMap.has(cid);
-                if (hasActivityToday || !existsInDb) {
-                  idsNeedingInfo.push(cid);
-                } else {
+                if (existsInDb) {
                   const existing = dbCampaignMap.get(cid);
                   gmvMaxCampaigns.push({
                     campaignId: cid,
@@ -398,18 +365,20 @@ export class TikTokApiService {
                     objectiveType: "OUTFLOW_GMV_MAX",
                     budget: Number(existing.budget || 0),
                     budgetMode: existing.budgetMode || "BUDGET_MODE_DAY",
-                    spend: 0,
-                    gmv: 0,
-                    orders: 0,
+                    spend: Number(stats.cost || 0),
+                    gmv: Number(stats.gross_revenue || 0),
+                    orders: Number(stats.orders || 0),
                     impressions: 0,
                     clicks: 0,
                     shoppingAdsType: existing.shoppingAdsType || "PRODUCT",
                     roasBid: Number(existing.roasBid || 0.0),
                   });
+                } else {
+                  idsNeedingInfo.push(cid);
                 }
               }
 
-              // Fetch metadata in small concurrent chunks (10 at a time) to avoid socket exhaustion and rate limits
+              // Only fetch metadata for new campaigns not yet in local DB
               const CHUNK_SIZE = 10;
               for (let i = 0; i < idsNeedingInfo.length; i += CHUNK_SIZE) {
                 const chunk = idsNeedingInfo.slice(i, i + CHUNK_SIZE);
@@ -454,7 +423,6 @@ export class TikTokApiService {
               }
             }
           }
-        }
       } catch (err) {
         logger.error("Error fetching GMV Max campaigns and performance reports", err);
       }
@@ -517,7 +485,8 @@ export class TikTokApiService {
   static async getCreativePerformance(
     accessToken: string,
     advertiserId: string,
-    date: string
+    date: string,
+    targetCampaignIds?: string[]
   ): Promise<TikTokCreativeData[]> {
     if (process.env.MOCK_TIKTOK_API === "true" || accessToken.startsWith("mock_")) {
       return [
@@ -557,90 +526,88 @@ export class TikTokApiService {
     try {
       const creativeMap = new Map<string, TikTokCreativeData>();
 
-    // Strategy 1: GMV Max 3-Level Hierarchy (Campaign -> Product Item Group -> Creative Item Post)
-    try {
-      const storeListUrl = `${this.getBaseUrl()}/gmv_max/store/list/?advertiser_id=${advertiserId}`;
-      const storeRes = await fetch(storeListUrl, { headers: { "Access-Token": accessToken } });
-      const storeData = await storeRes.json();
-      
-      let storeIds: string[] = [];
-      if (storeData.code === 0 && storeData.data?.store_list) {
-        storeIds = Array.from(new Set(storeData.data.store_list.map((s: any) => s.store_id).filter(Boolean)));
+      // 1. Identify active spending campaigns for target date (avoids scanning thousands of dead campaigns)
+      let activeCampIds: string[] = targetCampaignIds && targetCampaignIds.length > 0 ? [...targetCampaignIds] : [];
+
+      if (activeCampIds.length === 0) {
+        try {
+          const dbSpending = await prisma.campaignReport.findMany({
+            where: {
+              date: new Date(date),
+              OR: [
+                { spend: { gt: 0 } },
+                { gmv: { gt: 0 } },
+                { orders: { gt: 0 } },
+              ],
+              campaign: {
+                advertiser: { advertiserId },
+                shoppingAdsType: { not: "LIVE" },
+              },
+            },
+            select: { campaign: { select: { campaignId: true } } },
+          });
+          activeCampIds = Array.from(new Set(dbSpending.map((r) => r.campaign.campaignId)));
+        } catch (dbErr) {
+          logger.warn("Could not query active spending campaigns from DB", dbErr);
+        }
       }
 
-      if (storeIds.length > 0) {
-        for (const storeId of storeIds) {
-          // Level 1: Find active campaigns on target date across all pages
-          let activeCampIds: string[] = [];
-          let campPage = 1;
-          let campTotalPage = 1;
+      // Strategy 1: GMV Max Creative Discovery on active spending product campaigns
+      try {
+        const storeListUrl = `${this.getBaseUrl()}/gmv_max/store/list/?advertiser_id=${advertiserId}`;
+        const storeRes = await fetch(storeListUrl, { headers: { "Access-Token": accessToken } });
+        const storeData = await storeRes.json();
+        
+        let storeIds: string[] = [];
+        if (storeData.code === 0 && storeData.data?.store_list) {
+          storeIds = Array.from(new Set(storeData.data.store_list.map((s: any) => s.store_id).filter(Boolean)));
+        }
 
-          do {
-            try {
-              const campUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["campaign_id"]))}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${campPage}`;
-              const campRes = await fetch(campUrl, { headers: { "Access-Token": accessToken } });
-              const campData = await campRes.json();
-
-              if (campData.code === 0 && campData.data?.list) {
-                const spending = campData.data.list
-                  .filter((item: any) => Number(item.metrics?.cost || 0) > 0 || Number(item.metrics?.gross_revenue || 0) > 0)
-                  .map((item: any) => item.dimensions?.campaign_id)
-                  .filter(Boolean);
-                activeCampIds.push(...spending);
-                campTotalPage = campData.data.page_info?.total_page || 1;
-                campPage++;
-              } else {
-                break;
-              }
-            } catch (campErr) {
-              break;
+        if (storeIds.length > 0) {
+          for (const storeId of storeIds) {
+            // Fallback: If no activeCampIds were passed or found in DB, check page 1 of today's report
+            if (activeCampIds.length === 0) {
+              try {
+                const campUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["campaign_id"]))}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+                const campRes = await fetch(campUrl, { headers: { "Access-Token": accessToken } });
+                const campData = await campRes.json();
+                if (campData.code === 0 && campData.data?.list) {
+                  activeCampIds = campData.data.list
+                    .filter((item: any) => Number(item.metrics?.cost || 0) > 0 || Number(item.metrics?.gross_revenue || 0) > 0 || Number(item.metrics?.orders || 0) > 0)
+                    .map((item: any) => item.dimensions?.campaign_id)
+                    .filter(Boolean);
+                }
+              } catch (e) {}
             }
-          } while (campPage <= campTotalPage);
 
-          activeCampIds = Array.from(new Set(activeCampIds));
+            activeCampIds = Array.from(new Set(activeCampIds));
+            logger.info(`Scanning creatives for ${activeCampIds.length} active spending product campaigns (Store: ${storeId}) on ${date}`);
 
-          logger.info(`GMV Max active campaigns for store ${storeId} on ${date}: found ${activeCampIds.length} campaigns`);
+            for (const cid of activeCampIds) {
+              let foundCreativesForCampaign = false;
+              let cPage = 1;
+              let cTotalPage = 1;
 
-          // Level 2: For each campaign, query item_group_ids (products)
-          for (const cid of activeCampIds) {
-            try {
-              const itemGroupFilters = JSON.stringify({ campaign_ids: [String(cid)] });
-              const itemGroupUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_group_id"]))}&filtering=${encodeURIComponent(itemGroupFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
-              const itemGroupRes = await fetch(itemGroupUrl, { headers: { "Access-Token": accessToken } });
-              const itemGroupData = await itemGroupRes.json();
+              // Step A: Direct item level query (Fastest & most direct)
+              do {
+                try {
+                  const creativeFilters = JSON.stringify({
+                    campaign_ids: [String(cid)],
+                  });
+                  const directUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(creativeFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${cPage}`;
+                  const directRes = await fetch(directUrl, { headers: { "Access-Token": accessToken } });
+                  const directData = await directRes.json();
 
-              logger.info(`GMV Max item groups for campaign ${cid}: code=${itemGroupData.code}, rows=${itemGroupData.data?.list?.length || 0}`);
+                  if (directData.code === 0 && directData.data?.list && directData.data.list.length > 0) {
+                    foundCreativesForCampaign = true;
+                    for (const item of directData.data.list) {
+                      const vid = item.dimensions?.item_id;
+                      if (vid && String(vid) !== "-1") {
+                        const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                        const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                        const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
 
-              let itemGroupIds: string[] = [];
-              if (itemGroupData.code === 0 && itemGroupData.data?.list) {
-                itemGroupIds = itemGroupData.data.list.map((item: any) => item.dimensions?.item_group_id).filter(Boolean);
-              }
-
-              // Level 3: For each item_group_id, query creative level (item_id / post_id) with pagination
-              for (const igid of itemGroupIds) {
-                let cPage = 1;
-                let cTotalPage = 1;
-
-                do {
-                  try {
-                    const creativeFilters = JSON.stringify({
-                      campaign_ids: [String(cid)],
-                      item_group_ids: [String(igid)],
-                    });
-                    const creativeUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(creativeFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${cPage}`;
-                    const cRes = await fetch(creativeUrl, { headers: { "Access-Token": accessToken } });
-                    const cData = await cRes.json();
-
-                    logger.info(`GMV Max creatives for campaign ${cid} / item ${igid} (page ${cPage}/${cTotalPage}): code=${cData.code}, rows=${cData.data?.list?.length || 0}`);
-
-                    if (cData.code === 0 && cData.data?.list) {
-                      for (const item of cData.data.list) {
-                        const vid = item.dimensions?.item_id;
-                        if (vid && String(vid) !== "-1") {
-                          const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
-                          const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
-                          const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
-
+                        if (cost > 0 || gmv > 0 || orders > 0) {
                           const existing = creativeMap.get(String(vid));
                           if (existing) {
                             existing.spend += cost;
@@ -659,44 +626,132 @@ export class TikTokApiService {
                           }
                         }
                       }
-                      cTotalPage = cData.data.page_info?.total_page || 1;
-                      cPage++;
-                    } else {
-                      break;
                     }
-                  } catch (cErr: any) {
-                    logger.warn(`Error querying creatives for item ${igid}: ${cErr.message}`);
+                    cTotalPage = directData.data.page_info?.total_page || 1;
+                    cPage++;
+                  } else {
                     break;
                   }
-                } while (cPage <= cTotalPage);
+                } catch (cErr: any) {
+                  break;
+                }
+              } while (cPage <= cTotalPage);
+
+              // Step B: Fallback via item_group_id if direct item query returned 0 rows
+              if (!foundCreativesForCampaign) {
+                try {
+                  const itemGroupFilters = JSON.stringify({ campaign_ids: [String(cid)] });
+                  const itemGroupUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_group_id"]))}&filtering=${encodeURIComponent(itemGroupFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+                  const itemGroupRes = await fetch(itemGroupUrl, { headers: { "Access-Token": accessToken } });
+                  const itemGroupData = await itemGroupRes.json();
+
+                  let itemGroupIds: string[] = [];
+                  if (itemGroupData.code === 0 && itemGroupData.data?.list) {
+                    itemGroupIds = itemGroupData.data.list.map((item: any) => item.dimensions?.item_group_id).filter(Boolean);
+                  }
+
+                  for (const igid of itemGroupIds) {
+                    let igPage = 1;
+                    let igTotalPage = 1;
+
+                    do {
+                      try {
+                        const igFilters = JSON.stringify({
+                          campaign_ids: [String(cid)],
+                          item_group_ids: [String(igid)],
+                        });
+                        const igUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(igFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${igPage}`;
+                        const igRes = await fetch(igUrl, { headers: { "Access-Token": accessToken } });
+                        const igData = await igRes.json();
+
+                        if (igData.code === 0 && igData.data?.list) {
+                          for (const item of igData.data.list) {
+                            const vid = item.dimensions?.item_id;
+                            if (vid && String(vid) !== "-1") {
+                              const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                              const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                              const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+
+                              if (cost > 0 || gmv > 0 || orders > 0) {
+                                const existing = creativeMap.get(String(vid));
+                                if (existing) {
+                                  existing.spend += cost;
+                                  existing.gmv += gmv;
+                                  existing.orders += orders;
+                                } else {
+                                  creativeMap.set(String(vid), {
+                                    videoId: String(vid),
+                                    name: `Post ${vid}`,
+                                    spend: cost,
+                                    gmv: gmv,
+                                    orders: orders,
+                                    clicks: 0,
+                                    impressions: 0,
+                                  });
+                                }
+                              }
+                            }
+                          }
+                          igTotalPage = igData.data.page_info?.total_page || 1;
+                          igPage++;
+                        } else {
+                          break;
+                        }
+                      } catch (igErr) {
+                        break;
+                      }
+                    } while (igPage <= igTotalPage);
+                  }
+                } catch (igErr) {}
               }
-            } catch (igErr: any) {
-              logger.warn(`Error querying item groups for campaign ${cid}: ${igErr.message}`);
             }
           }
         }
+      } catch (gmvErr: any) {
+        logger.warn(`GMV Max creative report query failed: ${gmvErr.message}`);
       }
-    } catch (gmvErr: any) {
-      logger.warn(`GMV Max creative report query failed: ${gmvErr.message}`);
-    }
 
-    // Strategy 2: Standard Auction Ads (for manual Video Shopping Ads / Spark Ads)
-    try {
-      const adReportUrl = `${this.getBaseUrl()}/report/integrated/get/?advertiser_id=${advertiserId}&report_type=BASIC&data_level=AUCTION_AD&dimensions=${encodeURIComponent(JSON.stringify(["ad_id"]))}&metrics=${encodeURIComponent(JSON.stringify(["spend", "impressions", "clicks", "complete_payment", "value_per_complete_payment"]))}&start_date=${date}&end_date=${date}&page_size=100`;
-      const adReportRes = await fetch(adReportUrl, { headers: { "Access-Token": accessToken } });
-      const adReportData = await adReportRes.json();
-      if (adReportData.code === 0 && adReportData.data?.list) {
-        const validAds = adReportData.data.list.filter((item: any) => Number(item.metrics?.spend || 0) > 0 || Number(item.metrics?.impressions || 0) > 0);
+      // Strategy 2: Standard Auction Ads (for manual Video Shopping Ads / Spark Ads)
+      try {
+        let adPage = 1;
+        let adTotalPage = 1;
+        const validAds: any[] = [];
+
+        do {
+          const adReportUrl = `${this.getBaseUrl()}/report/integrated/get/?advertiser_id=${advertiserId}&report_type=BASIC&data_level=AUCTION_AD&dimensions=${encodeURIComponent(JSON.stringify(["ad_id"]))}&metrics=${encodeURIComponent(JSON.stringify(["spend", "impressions", "clicks", "complete_payment", "value_per_complete_payment"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${adPage}`;
+          const adReportRes = await fetch(adReportUrl, { headers: { "Access-Token": accessToken } });
+          const adReportData = await adReportRes.json();
+
+          if (adReportData.code === 0 && adReportData.data?.list) {
+            const spending = adReportData.data.list.filter(
+              (item: any) =>
+                Number(item.metrics?.spend || 0) > 0 ||
+                Number(item.metrics?.value_per_complete_payment || 0) > 0 ||
+                Number(item.metrics?.complete_payment || 0) > 0
+            );
+            validAds.push(...spending);
+            adTotalPage = adReportData.data.page_info?.total_page || 1;
+            adPage++;
+          } else {
+            break;
+          }
+        } while (adPage <= adTotalPage);
+
         if (validAds.length > 0) {
           const adIds = validAds.map((item: any) => item.dimensions?.ad_id).filter(Boolean);
-          const adInfoUrl = `${this.getBaseUrl()}/ad/get/?advertiser_id=${advertiserId}&filtering=${encodeURIComponent(JSON.stringify({ ad_ids: adIds }))}`;
-          const adInfoRes = await fetch(adInfoUrl, { headers: { "Access-Token": accessToken } });
-          const adInfoData = await adInfoRes.json();
           const adMap = new Map<string, any>();
-          if (adInfoData.code === 0 && adInfoData.data?.list) {
-            for (const ad of adInfoData.data.list) {
-              adMap.set(ad.ad_id, ad);
-            }
+          for (let i = 0; i < adIds.length; i += 100) {
+            const chunk = adIds.slice(i, i + 100);
+            try {
+              const adInfoUrl = `${this.getBaseUrl()}/ad/get/?advertiser_id=${advertiserId}&filtering=${encodeURIComponent(JSON.stringify({ ad_ids: chunk }))}`;
+              const adInfoRes = await fetch(adInfoUrl, { headers: { "Access-Token": accessToken } });
+              const adInfoData = await adInfoRes.json();
+              if (adInfoData.code === 0 && adInfoData.data?.list) {
+                for (const ad of adInfoData.data.list) {
+                  adMap.set(ad.ad_id, ad);
+                }
+              }
+            } catch (e) {}
           }
 
           for (const item of validAds) {
@@ -731,80 +786,71 @@ export class TikTokApiService {
             }
           }
         }
+      } catch (adErr) {
+        logger.warn("Standard ad report query failed", adErr);
       }
-    } catch (adErr) {
-      logger.warn("Standard ad report query failed", adErr);
-    }
 
-    // Video Metadata Resolution (from Asset Library)
-    const videoNamesMap = new Map<string, { name: string; url?: string; authorUsername?: string; authorName?: string; channelType?: "INHOUSE" | "AFFILIATE" }>();
-    try {
-      const libraryUrl = `${this.getBaseUrl()}/file/video/ad/search/?advertiser_id=${advertiserId}&page_size=100`;
-      const libraryRes = await fetch(libraryUrl, { headers: { "Access-Token": accessToken } });
-      const libraryData = await libraryRes.json();
-      if (libraryData.code === 0 && libraryData.data?.list) {
-        for (const video of libraryData.data.list) {
-          const vid = String(video.video_id);
-          const url = video.preview_url || video.video_url;
-          const urlMatch = url?.match(/@([^/?]+)/);
-          const author = urlMatch ? urlMatch[1] : (video.author_username || video.identity_name || undefined);
-          const authType = String(video.authorization_type || video.identity_type || "").toLowerCase();
-          const channelType: "INHOUSE" | "AFFILIATE" | undefined = 
-            authType.includes("official") || authType.includes("shop") ? "INHOUSE" : 
-            authType.includes("affiliate") ? "AFFILIATE" : undefined;
+      // Strategy 3: Video Metadata Resolution (from Asset Library with pagination)
+      const videoNamesMap = new Map<string, { name: string; url?: string; authorUsername?: string; authorName?: string; channelType?: "INHOUSE" | "AFFILIATE" }>();
+      try {
+        let libPage = 1;
+        let libTotalPage = 1;
+        do {
+          const libraryUrl = `${this.getBaseUrl()}/file/video/ad/search/?advertiser_id=${advertiserId}&page_size=100&page=${libPage}`;
+          const libraryRes = await fetch(libraryUrl, { headers: { "Access-Token": accessToken } });
+          const libraryData = await libraryRes.json();
+          if (libraryData.code === 0 && libraryData.data?.list) {
+            for (const video of libraryData.data.list) {
+              const vid = String(video.video_id);
+              const url = video.preview_url || video.video_url;
+              const urlMatch = url?.match(/@([^/?]+)/);
+              const author = urlMatch ? urlMatch[1] : (video.author_username || video.identity_name || undefined);
+              const authType = String(video.authorization_type || video.identity_type || "").toLowerCase();
+              const channelType: "INHOUSE" | "AFFILIATE" | undefined = 
+                authType.includes("official") || authType.includes("shop") ? "INHOUSE" : 
+                authType.includes("affiliate") ? "AFFILIATE" : undefined;
 
-          const metaObj = {
-            name: video.video_name || `Video ${vid}`,
-            url,
-            authorUsername: author,
-            authorName: video.author_name,
-            channelType,
-          };
+              const metaObj = {
+                name: video.video_name || `Video ${vid}`,
+                url,
+                authorUsername: author,
+                authorName: video.author_name,
+                channelType,
+              };
 
-          videoNamesMap.set(vid, metaObj);
-          if (video.item_id) videoNamesMap.set(String(video.item_id), metaObj);
-          if (video.tiktok_item_id) videoNamesMap.set(String(video.tiktok_item_id), metaObj);
-          if (video.post_id) videoNamesMap.set(String(video.post_id), metaObj);
-
-          if (creativeMap.size === 0) {
-            creativeMap.set(vid, {
-              videoId: vid,
-              name: video.video_name || `Video ${vid}`,
-              videoUrl: url,
-              authorUsername: author,
-              authorName: video.author_name,
-              channelType,
-              spend: 0,
-              gmv: 0,
-              orders: 0,
-              clicks: 0,
-              impressions: 0,
-            });
+              videoNamesMap.set(vid, metaObj);
+              if (video.item_id) videoNamesMap.set(String(video.item_id), metaObj);
+              if (video.tiktok_item_id) videoNamesMap.set(String(video.tiktok_item_id), metaObj);
+              if (video.post_id) videoNamesMap.set(String(video.post_id), metaObj);
+            }
+            libTotalPage = libraryData.data.page_info?.total_page || 1;
+            libPage++;
+          } else {
+            break;
           }
-        }
+        } while (libPage <= libTotalPage && libPage <= 5);
+      } catch (metaErr) {
+        logger.warn("Failed to fetch video library metadata", metaErr);
       }
-    } catch (metaErr) {
-      logger.warn("Failed to fetch video library metadata", metaErr);
-    }
 
-    // Construct final list
-    const result: TikTokCreativeData[] = Array.from(creativeMap.values()).map((c) => {
-      const meta = videoNamesMap.get(c.videoId);
-      const videoUrl = meta?.url || c.videoUrl || `https://www.tiktok.com/play/${c.videoId}`;
-      const urlMatch = videoUrl?.match(/@([^/?]+)/);
-      const authorUsername = meta?.authorUsername || c.authorUsername || (urlMatch ? urlMatch[1] : undefined);
+      // Construct final list
+      const result: TikTokCreativeData[] = Array.from(creativeMap.values()).map((c) => {
+        const meta = videoNamesMap.get(c.videoId);
+        const videoUrl = meta?.url || c.videoUrl || `https://www.tiktok.com/play/${c.videoId}`;
+        const urlMatch = videoUrl?.match(/@([^/?]+)/);
+        const authorUsername = meta?.authorUsername || c.authorUsername || (urlMatch ? urlMatch[1] : undefined);
 
-      return {
-        ...c,
-        name: meta?.name || c.name || `Video ${c.videoId}`,
-        videoUrl,
-        authorUsername,
-        authorName: meta?.authorName || c.authorName,
-        channelType: meta?.channelType || c.channelType,
-      };
-    });
+        return {
+          ...c,
+          name: meta?.name || c.name || `Video ${c.videoId}`,
+          videoUrl,
+          authorUsername,
+          authorName: meta?.authorName || c.authorName,
+          channelType: meta?.channelType || c.channelType,
+        };
+      });
 
-    return result;
+      return result;
     } catch (error) {
       logger.error("TikTok getCreativePerformance failed with error", error, { advertiserId });
       return [];
