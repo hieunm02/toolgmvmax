@@ -67,12 +67,20 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. Test Smart+ Material Report Breakdown
+    // 3. Test Smart+ Material Report Breakdown with exact valid metrics
     const smartBreakdowns: any[] = [];
-    const smartDims = [["material_id"], ["main_material_id"]];
+    const smartDims = [["main_material_id"]];
     for (const sDims of smartDims) {
       try {
-        const smartMetrics = JSON.stringify(["spend", "impressions", "clicks", "conversions"]);
+        const smartMetrics = JSON.stringify([
+          "spend",
+          "impressions",
+          "clicks",
+          "total_purchase",
+          "total_purchase_value",
+          "complete_payment",
+          "complete_payment_roas",
+        ]);
         const url = `${baseUrl}/smart_plus/material_report/breakdown/?advertiser_id=${advertiserId}&dimensions=${encodeURIComponent(JSON.stringify(sDims))}&metrics=${encodeURIComponent(smartMetrics)}&start_date=${dateParam}&end_date=${dateParam}&page_size=20`;
         const res = await fetch(url, { headers: { "Access-Token": accessToken } });
         const json = await res.json();
@@ -81,7 +89,7 @@ export async function GET(request: Request) {
           code: json.code,
           message: json.message,
           rows: json.data?.list?.length || 0,
-          sample: json.data?.list?.slice(0, 3) || [],
+          sample: json.data?.list?.slice(0, 5) || [],
         });
       } catch (e: any) {
         smartBreakdowns.push({ dims: sDims, error: e.message });
