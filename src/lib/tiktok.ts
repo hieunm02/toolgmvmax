@@ -557,145 +557,160 @@ export class TikTokApiService {
     try {
       const creativeMap = new Map<string, TikTokCreativeData>();
 
-    // Strategy 1: Smart+ Material Report Breakdown (High performance & direct)
+    // Strategy 1: GMV Max 3-Level Hierarchy (Campaign -> Product Item Group -> Creative Item Post)
     try {
-      const smartMetrics = JSON.stringify([
-        "spend",
-        "impressions",
-        "clicks",
-        "total_purchase",
-        "total_purchase_value",
-        "complete_payment",
-        "complete_payment_roas",
-      ]);
-      const smartUrl = `${this.getBaseUrl()}/smart_plus/material_report/breakdown/?advertiser_id=${advertiserId}&dimensions=${encodeURIComponent(JSON.stringify(["main_material_id"]))}&metrics=${encodeURIComponent(smartMetrics)}&start_date=${date}&end_date=${date}&page_size=100`;
-      const smartRes = await fetch(smartUrl, { headers: { "Access-Token": accessToken } });
-      const smartData = await smartRes.json();
+      const storeListUrl = `${this.getBaseUrl()}/gmv_max/store/list/?advertiser_id=${advertiserId}`;
+      const storeRes = await fetch(storeListUrl, { headers: { "Access-Token": accessToken } });
+      const storeData = await storeRes.json();
+      
+      let storeIds: string[] = [];
+      if (storeData.code === 0 && storeData.data?.store_list) {
+        storeIds = Array.from(new Set(storeData.data.store_list.map((s: any) => s.store_id).filter(Boolean)));
+      }
 
-      logger.info(`Smart+ material breakdown check: dims=["main_material_id"], code=${smartData.code}, msg=${smartData.message || "OK"}, rows=${smartData.data?.list?.length || 0}`);
+      if (storeIds.length > 0) {
+        for (const storeId of storeIds) {
+          // Level 1: Find active campaigns on target date
+          const campUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["campaign_id"]))}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+          const campRes = await fetch(campUrl, { headers: { "Access-Token": accessToken } });
+          const campData = await campRes.json();
 
-      if (smartData.code === 0 && smartData.data?.list && smartData.data.list.length > 0) {
-        logger.info(`Smart+ material report breakdown succeeded: found ${smartData.data.list.length} items`);
-        for (const item of smartData.data.list) {
-          const vid = item.main_material_id || item.dimensions?.main_material_id || item.material_id || item.ad_material_id || item.video_id;
-          if (vid && String(vid) !== "-1") {
-            const cost = Number(item.metrics?.spend || item.spend || 0);
-            const orders = Number(item.metrics?.total_purchase || item.metrics?.complete_payment || item.orders || 0);
-            const roas = Number(item.metrics?.complete_payment_roas || 0);
-            const gmv = Number(item.metrics?.total_purchase_value || (cost * roas) || item.gross_revenue || 0);
-            const clicks = Number(item.metrics?.clicks || item.clicks || 0);
-            const impressions = Number(item.metrics?.impressions || item.impressions || 0);
+          let activeCampIds: string[] = [];
+          if (campData.code === 0 && campData.data?.list) {
+            activeCampIds = campData.data.list
+              .filter((item: any) => Number(item.metrics?.cost || 0) > 0 || Number(item.metrics?.gross_revenue || 0) > 0)
+              .map((item: any) => item.dimensions?.campaign_id)
+              .filter(Boolean);
 
-            const existing = creativeMap.get(String(vid));
-            if (existing) {
-              existing.spend += cost;
-              existing.gmv += gmv;
-              existing.orders += orders;
-              existing.clicks += clicks;
-              existing.impressions += impressions;
-            } else {
-              creativeMap.set(String(vid), {
-                videoId: String(vid),
-                name: item.main_material_name || item.material_name || `Material ${vid}`,
-                spend: cost,
-                gmv: gmv,
-                orders: orders,
-                clicks: clicks,
-                impressions: impressions,
-              });
+            if (activeCampIds.length === 0) {
+              activeCampIds = campData.data.list.map((item: any) => item.dimensions?.campaign_id).filter(Boolean).slice(0, 10);
+            }
+          }
+
+          logger.info(`GMV Max active campaigns for store ${storeId} on ${date}: found ${activeCampIds.length} campaigns`);
+
+          // Level 2: For each campaign, query item_group_ids (products)
+          for (const cid of activeCampIds) {
+            try {
+              const itemGroupFilters = JSON.stringify({ campaign_ids: [String(cid)] });
+              const itemGroupUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_group_id"]))}&filtering=${encodeURIComponent(itemGroupFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+              const itemGroupRes = await fetch(itemGroupUrl, { headers: { "Access-Token": accessToken } });
+              const itemGroupData = await itemGroupRes.json();
+
+              logger.info(`GMV Max item groups for campaign ${cid}: code=${itemGroupData.code}, rows=${itemGroupData.data?.list?.length || 0}`);
+
+              let itemGroupIds: string[] = [];
+              if (itemGroupData.code === 0 && itemGroupData.data?.list) {
+                itemGroupIds = itemGroupData.data.list.map((item: any) => item.dimensions?.item_group_id).filter(Boolean);
+              }
+
+              // Level 3: For each item_group_id, query creative level (item_id / post_id)
+              for (const igid of itemGroupIds) {
+                try {
+                  const creativeFilters = JSON.stringify({
+                    campaign_ids: [String(cid)],
+                    item_group_ids: [String(igid)],
+                  });
+                  const creativeUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(creativeFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+                  const creativeRes = await fetch(creativeUrl, { headers: { "Access-Token": accessToken } });
+                  const creativeData = await creativeRes.json();
+
+                  logger.info(`GMV Max creatives for campaign ${cid} / item ${igid}: code=${creativeData.code}, rows=${creativeData.data?.list?.length || 0}`);
+
+                  if (creativeData.code === 0 && creativeData.data?.list) {
+                    for (const item of creativeData.data.list) {
+                      const vid = item.dimensions?.item_id;
+                      if (vid && String(vid) !== "-1") {
+                        const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                        const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                        const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+
+                        const existing = creativeMap.get(String(vid));
+                        if (existing) {
+                          existing.spend += cost;
+                          existing.gmv += gmv;
+                          existing.orders += orders;
+                        } else {
+                          creativeMap.set(String(vid), {
+                            videoId: String(vid),
+                            name: `Post ${vid}`,
+                            spend: cost,
+                            gmv: gmv,
+                            orders: orders,
+                            clicks: 0,
+                            impressions: 0,
+                          });
+                        }
+                      }
+                    }
+                  }
+                } catch (cErr: any) {
+                  logger.warn(`Error querying creatives for item ${igid}: ${cErr.message}`);
+                }
+              }
+            } catch (igErr: any) {
+              logger.warn(`Error querying item groups for campaign ${cid}: ${igErr.message}`);
             }
           }
         }
       }
-    } catch (smartErr: any) {
-      logger.warn(`Smart+ material report breakdown error: ${smartErr.message}`);
+    } catch (gmvErr: any) {
+      logger.warn(`GMV Max creative report query failed: ${gmvErr.message}`);
     }
 
-    // Strategy 2: GMV Max Creative Level Report (requires campaign_id & item_group_id filtering)
+    // Strategy 2: Smart+ Material Report Breakdown (Fallback)
     if (creativeMap.size === 0) {
       try {
-        const storeListUrl = `${this.getBaseUrl()}/gmv_max/store/list/?advertiser_id=${advertiserId}`;
-        const storeRes = await fetch(storeListUrl, { headers: { "Access-Token": accessToken } });
-        const storeData = await storeRes.json();
-        
-        let storeIds: string[] = [];
-        if (storeData.code === 0 && storeData.data?.store_list) {
-          storeIds = Array.from(new Set(storeData.data.store_list.map((s: any) => s.store_id).filter(Boolean)));
-        }
+        const smartMetrics = JSON.stringify([
+          "spend",
+          "impressions",
+          "clicks",
+          "total_purchase",
+          "total_purchase_value",
+          "complete_payment",
+          "complete_payment_roas",
+        ]);
+        const smartUrl = `${this.getBaseUrl()}/smart_plus/material_report/breakdown/?advertiser_id=${advertiserId}&dimensions=${encodeURIComponent(JSON.stringify(["main_material_id"]))}&metrics=${encodeURIComponent(smartMetrics)}&start_date=${date}&end_date=${date}&page_size=100`;
+        const smartRes = await fetch(smartUrl, { headers: { "Access-Token": accessToken } });
+        const smartData = await smartRes.json();
 
-        if (storeIds.length > 0) {
-          for (const storeId of storeIds) {
-            // First: Discover active products (item_group_ids) under campaigns
-            try {
-              const productDiscoveryUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["campaign_id", "item_group_id"]))}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
-              const prodRes = await fetch(productDiscoveryUrl, { headers: { "Access-Token": accessToken } });
-              const prodData = await prodRes.json();
+        logger.info(`Smart+ material breakdown check: dims=["main_material_id"], code=${smartData.code}, msg=${smartData.message || "OK"}, rows=${smartData.data?.list?.length || 0}`);
 
-              logger.info(`GMV Max product discovery: code=${prodData.code}, msg=${prodData.message || "OK"}, rows=${prodData.data?.list?.length || 0}`);
+        if (smartData.code === 0 && smartData.data?.list && smartData.data.list.length > 0) {
+          logger.info(`Smart+ material report breakdown succeeded: found ${smartData.data.list.length} items`);
+          for (const item of smartData.data.list) {
+            const vid = item.main_material_id || item.dimensions?.main_material_id || item.material_id || item.ad_material_id || item.video_id;
+            if (vid && String(vid) !== "-1") {
+              const cost = Number(item.metrics?.spend || item.spend || 0);
+              const orders = Number(item.metrics?.total_purchase || item.metrics?.complete_payment || item.orders || 0);
+              const roas = Number(item.metrics?.complete_payment_roas || 0);
+              const gmv = Number(item.metrics?.total_purchase_value || (cost * roas) || item.gross_revenue || 0);
+              const clicks = Number(item.metrics?.clicks || item.clicks || 0);
+              const impressions = Number(item.metrics?.impressions || item.impressions || 0);
 
-              if (prodData.code === 0 && prodData.data?.list && prodData.data.list.length > 0) {
-                // Filter down to unique campaign_id and item_group_id pairs
-                const pairs: Array<{ campaignId: string; itemGroupId: string }> = [];
-                for (const row of prodData.data.list) {
-                  const cid = row.dimensions?.campaign_id;
-                  const igid = row.dimensions?.item_group_id;
-                  if (cid && igid) {
-                    pairs.push({ campaignId: String(cid), itemGroupId: String(igid) });
-                  }
-                }
-
-                // Query creative level for each pair
-                for (const pair of pairs.slice(0, 10)) {
-                  try {
-                    const filters = JSON.stringify({
-                      campaign_ids: [pair.campaignId],
-                      item_group_ids: [pair.itemGroupId],
-                    });
-                    const creativeReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(filters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100`;
-                    const cRes = await fetch(creativeReportUrl, { headers: { "Access-Token": accessToken } });
-                    const cData = await cRes.json();
-
-                    logger.info(`GMV Max item creative report for campaign ${pair.campaignId} / item ${pair.itemGroupId}: code=${cData.code}, rows=${cData.data?.list?.length || 0}`);
-
-                    if (cData.code === 0 && cData.data?.list && cData.data.list.length > 0) {
-                      for (const item of cData.data.list) {
-                        const vid = item.dimensions?.item_id;
-                        if (vid && String(vid) !== "-1") {
-                          const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
-                          const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
-                          const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
-
-                          const existing = creativeMap.get(String(vid));
-                          if (existing) {
-                            existing.spend += cost;
-                            existing.gmv += gmv;
-                            existing.orders += orders;
-                          } else {
-                            creativeMap.set(String(vid), {
-                              videoId: String(vid),
-                              name: `Post ${vid}`,
-                              spend: cost,
-                              gmv: gmv,
-                              orders: orders,
-                              clicks: 0,
-                              impressions: 0,
-                            });
-                          }
-                        }
-                      }
-                    }
-                  } catch (pairErr: any) {
-                    logger.warn(`Error fetching creative report for pair ${pair.campaignId}: ${pairErr.message}`);
-                  }
-                }
+              const existing = creativeMap.get(String(vid));
+              if (existing) {
+                existing.spend += cost;
+                existing.gmv += gmv;
+                existing.orders += orders;
+                existing.clicks += clicks;
+                existing.impressions += impressions;
+              } else {
+                creativeMap.set(String(vid), {
+                  videoId: String(vid),
+                  name: item.main_material_name || item.material_name || `Material ${vid}`,
+                  spend: cost,
+                  gmv: gmv,
+                  orders: orders,
+                  clicks: clicks,
+                  impressions: impressions,
+                });
               }
-            } catch (prodErr: any) {
-              logger.warn(`Error during GMV Max product discovery: ${prodErr.message}`);
             }
           }
         }
-      } catch (gmvErr: any) {
-        logger.warn(`GMV Max creative report query failed: ${gmvErr.message}`);
+      } catch (smartErr: any) {
+        logger.warn(`Smart+ material report breakdown error: ${smartErr.message}`);
       }
     }
 
