@@ -575,6 +575,8 @@ export class TikTokApiService {
             ["creative/item_id"],
             ["campaign_id", "item_id"],
             ["item_id"],
+            ["campaign_id", "item_group_id", "item_id"],
+            ["item_group_id", "item_id"],
             ["main_material_id"],
             ["material_id"],
           ];
@@ -585,7 +587,7 @@ export class TikTokApiService {
               const gmvRes = await fetch(gmvReportUrl, { headers: { "Access-Token": accessToken } });
               const gmvData = await gmvRes.json();
 
-              logger.info(`GMV Max creative report check: dims=${JSON.stringify(dims)}, code=${gmvData.code}, rows=${gmvData.data?.list?.length || 0}`);
+              logger.info(`GMV Max creative report check: dims=${JSON.stringify(dims)}, code=${gmvData.code}, msg=${gmvData.message || "OK"}, rows=${gmvData.data?.list?.length || 0}`);
 
               if (gmvData.code === 0 && gmvData.data?.list && gmvData.data.list.length > 0) {
                 logger.info(`GMV Max creative report succeeded for store ${storeId} with dimensions ${JSON.stringify(dims)}: found ${gmvData.data.list.length} rows`);
@@ -626,44 +628,98 @@ export class TikTokApiService {
       logger.warn("GMV Max creative report query failed", gmvErr);
     }
 
-    // Strategy 2: Smart+ Material Report Breakdown
+    // Strategy 2: Smart+ Material Report Breakdown & Overview
     if (creativeMap.size === 0) {
-      try {
-        const smartUrl = `${this.getBaseUrl()}/smart_plus/material_report/breakdown/?advertiser_id=${advertiserId}&start_date=${date}&end_date=${date}&page_size=100`;
-        const smartRes = await fetch(smartUrl, { headers: { "Access-Token": accessToken } });
-        const smartData = await smartRes.json();
-        if (smartData.code === 0 && smartData.data?.list && smartData.data.list.length > 0) {
-          logger.info(`Smart+ material report succeeded: found ${smartData.data.list.length} items`);
-          for (const item of smartData.data.list) {
-            const vid = item.material_id || item.main_material_id || item.video_id;
-            if (vid) {
-              const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
-              const gmv = Number(item.metrics?.gross_revenue || item.metrics?.conversion_value || 0);
-              const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
-              const clicks = Number(item.metrics?.clicks || 0);
-              const impressions = Number(item.metrics?.impressions || 0);
+      const smartDimVariants = [
+        ["material_id"],
+        ["main_material_id"],
+        ["ad_material_id"],
+      ];
 
-              const existing = creativeMap.get(String(vid));
-              if (existing) {
-                existing.spend += cost;
-                existing.gmv += gmv;
-                existing.orders += orders;
-              } else {
-                creativeMap.set(String(vid), {
-                  videoId: String(vid),
-                  name: item.material_name || `Material ${vid}`,
-                  spend: cost,
-                  gmv: gmv,
-                  orders: orders,
-                  clicks: clicks,
-                  impressions: impressions,
-                });
+      for (const sDims of smartDimVariants) {
+        try {
+          const smartMetrics = JSON.stringify(["spend", "impressions", "clicks", "conversions"]);
+          const smartUrl = `${this.getBaseUrl()}/smart_plus/material_report/breakdown/?advertiser_id=${advertiserId}&dimensions=${encodeURIComponent(JSON.stringify(sDims))}&metrics=${encodeURIComponent(smartMetrics)}&start_date=${date}&end_date=${date}&page_size=100`;
+          const smartRes = await fetch(smartUrl, { headers: { "Access-Token": accessToken } });
+          const smartData = await smartRes.json();
+
+          logger.info(`Smart+ material breakdown check: dims=${JSON.stringify(sDims)}, code=${smartData.code}, msg=${smartData.message || "OK"}, rows=${smartData.data?.list?.length || 0}`);
+
+          if (smartData.code === 0 && smartData.data?.list && smartData.data.list.length > 0) {
+            logger.info(`Smart+ material report breakdown succeeded with dims ${JSON.stringify(sDims)}: found ${smartData.data.list.length} items`);
+            for (const item of smartData.data.list) {
+              const vid = item.material_id || item.main_material_id || item.ad_material_id || item.dimensions?.[sDims[0]] || item.video_id;
+              if (vid) {
+                const cost = Number(item.metrics?.spend || item.metrics?.cost || item.spend || 0);
+                const gmv = Number(item.metrics?.gross_revenue || item.metrics?.conversion_value || item.gross_revenue || 0);
+                const orders = Number(item.metrics?.orders || item.metrics?.conversions || item.orders || 0);
+                const clicks = Number(item.metrics?.clicks || item.clicks || 0);
+                const impressions = Number(item.metrics?.impressions || item.impressions || 0);
+
+                const existing = creativeMap.get(String(vid));
+                if (existing) {
+                  existing.spend += cost;
+                  existing.gmv += gmv;
+                  existing.orders += orders;
+                } else {
+                  creativeMap.set(String(vid), {
+                    videoId: String(vid),
+                    name: item.material_name || item.main_material_name || `Material ${vid}`,
+                    spend: cost,
+                    gmv: gmv,
+                    orders: orders,
+                    clicks: clicks,
+                    impressions: impressions,
+                  });
+                }
+              }
+            }
+            break;
+          }
+        } catch (smartErr: any) {
+          logger.warn(`Smart+ material report breakdown error with dims ${JSON.stringify(sDims)}: ${smartErr.message}`);
+        }
+      }
+
+      // If breakdown empty, try overview
+      if (creativeMap.size === 0) {
+        try {
+          const overviewUrl = `${this.getBaseUrl()}/smart_plus/material_report/overview/?advertiser_id=${advertiserId}&dimensions=${encodeURIComponent(JSON.stringify(["material_id"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+          const overviewRes = await fetch(overviewUrl, { headers: { "Access-Token": accessToken } });
+          const overviewData = await overviewRes.json();
+
+          logger.info(`Smart+ material overview check: code=${overviewData.code}, msg=${overviewData.message || "OK"}, rows=${overviewData.data?.list?.length || 0}`);
+
+          if (overviewData.code === 0 && overviewData.data?.list && overviewData.data.list.length > 0) {
+            for (const item of overviewData.data.list) {
+              const vid = item.material_id || item.dimensions?.material_id;
+              if (vid) {
+                const cost = Number(item.metrics?.spend || item.metrics?.cost || item.spend || 0);
+                const gmv = Number(item.metrics?.gross_revenue || item.metrics?.conversion_value || item.gross_revenue || 0);
+                const orders = Number(item.metrics?.orders || item.metrics?.conversions || item.orders || 0);
+
+                const existing = creativeMap.get(String(vid));
+                if (existing) {
+                  existing.spend += cost;
+                  existing.gmv += gmv;
+                  existing.orders += orders;
+                } else {
+                  creativeMap.set(String(vid), {
+                    videoId: String(vid),
+                    name: item.material_name || `Material ${vid}`,
+                    spend: cost,
+                    gmv: gmv,
+                    orders: orders,
+                    clicks: 0,
+                    impressions: 0,
+                  });
+                }
               }
             }
           }
+        } catch (overviewErr: any) {
+          logger.warn(`Smart+ material overview error: ${overviewErr.message}`);
         }
-      } catch (smartErr) {
-        logger.warn("Smart+ material report query failed", smartErr);
       }
     }
 
