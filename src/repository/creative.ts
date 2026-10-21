@@ -20,17 +20,18 @@ export class CreativeRepository {
   }): Promise<Creative> {
     const existing = await prisma.creative.findUnique({
       where: { videoId: data.videoId },
-      select: { channelType: true },
+      select: { channelType: true, advertiserId: true },
     });
 
     const channelTypeToSet = existing?.channelType || data.channelType || "AFFILIATE";
+    const advertiserIdToSet = existing?.advertiserId || data.advertiserId;
 
     return prisma.creative.upsert({
       where: { videoId: data.videoId },
       update: {
         name: data.name,
         videoUrl: data.videoUrl,
-        advertiserId: data.advertiserId,
+        advertiserId: advertiserIdToSet,
         ...(data.authorUsername !== undefined ? { authorUsername: data.authorUsername } : {}),
         ...(data.authorName !== undefined ? { authorName: data.authorName } : {}),
         channelType: channelTypeToSet,

@@ -584,11 +584,76 @@ export class TikTokApiService {
             logger.info(`Scanning creatives for ${activeCampIds.length} active spending product campaigns (Store: ${storeId}) on ${date}`);
 
             for (const cid of activeCampIds) {
-              let foundCreativesForCampaign = false;
+              // 1. Query all item_group_ids (products) for this campaign
+              let itemGroupIds: string[] = [];
+              try {
+                const itemGroupFilters = JSON.stringify({ campaign_ids: [String(cid)] });
+                const itemGroupUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_group_id"]))}&filtering=${encodeURIComponent(itemGroupFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+                const itemGroupRes = await fetch(itemGroupUrl, { headers: { "Access-Token": accessToken } });
+                const itemGroupData = await itemGroupRes.json();
+
+                if (itemGroupData.code === 0 && itemGroupData.data?.list) {
+                  itemGroupIds = itemGroupData.data.list.map((item: any) => item.dimensions?.item_group_id).filter(Boolean);
+                }
+              } catch (igErr) {}
+
+              // 2. For each item_group_id, query creative level (item_id / post_id) with pagination
+              for (const igid of itemGroupIds) {
+                let igPage = 1;
+                let igTotalPage = 1;
+
+                do {
+                  try {
+                    const igFilters = JSON.stringify({
+                      campaign_ids: [String(cid)],
+                      item_group_ids: [String(igid)],
+                    });
+                    const igUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(igFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${igPage}`;
+                    const igRes = await fetch(igUrl, { headers: { "Access-Token": accessToken } });
+                    const igData = await igRes.json();
+
+                    if (igData.code === 0 && igData.data?.list) {
+                      for (const item of igData.data.list) {
+                        const vid = item.dimensions?.item_id;
+                        if (vid && String(vid) !== "-1") {
+                          const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                          const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                          const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+
+                          if (cost > 0 || gmv > 0 || orders > 0) {
+                            const existing = creativeMap.get(String(vid));
+                            if (existing) {
+                              existing.spend += cost;
+                              existing.gmv += gmv;
+                              existing.orders += orders;
+                            } else {
+                              creativeMap.set(String(vid), {
+                                videoId: String(vid),
+                                name: `Post ${vid}`,
+                                spend: cost,
+                                gmv: gmv,
+                                orders: orders,
+                                clicks: 0,
+                                impressions: 0,
+                              });
+                            }
+                          }
+                        }
+                      }
+                      igTotalPage = igData.data.page_info?.total_page || 1;
+                      igPage++;
+                    } else {
+                      break;
+                    }
+                  } catch (igErr) {
+                    break;
+                  }
+                } while (igPage <= igTotalPage);
+              }
+
+              // 3. Direct item level query (to capture creatives not partitioned by item_group_id)
               let cPage = 1;
               let cTotalPage = 1;
-
-              // Step A: Direct item level query (Fastest & most direct)
               do {
                 try {
                   const creativeFilters = JSON.stringify({
@@ -598,22 +663,16 @@ export class TikTokApiService {
                   const directRes = await fetch(directUrl, { headers: { "Access-Token": accessToken } });
                   const directData = await directRes.json();
 
-                  if (directData.code === 0 && directData.data?.list && directData.data.list.length > 0) {
-                    foundCreativesForCampaign = true;
+                  if (directData.code === 0 && directData.data?.list) {
                     for (const item of directData.data.list) {
                       const vid = item.dimensions?.item_id;
                       if (vid && String(vid) !== "-1") {
-                        const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
-                        const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
-                        const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+                        if (!creativeMap.has(String(vid))) {
+                          const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                          const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                          const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
 
-                        if (cost > 0 || gmv > 0 || orders > 0) {
-                          const existing = creativeMap.get(String(vid));
-                          if (existing) {
-                            existing.spend += cost;
-                            existing.gmv += gmv;
-                            existing.orders += orders;
-                          } else {
+                          if (cost > 0 || gmv > 0 || orders > 0) {
                             creativeMap.set(String(vid), {
                               videoId: String(vid),
                               name: `Post ${vid}`,
@@ -636,74 +695,6 @@ export class TikTokApiService {
                   break;
                 }
               } while (cPage <= cTotalPage);
-
-              // Step B: Fallback via item_group_id if direct item query returned 0 rows
-              if (!foundCreativesForCampaign) {
-                try {
-                  const itemGroupFilters = JSON.stringify({ campaign_ids: [String(cid)] });
-                  const itemGroupUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_group_id"]))}&filtering=${encodeURIComponent(itemGroupFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
-                  const itemGroupRes = await fetch(itemGroupUrl, { headers: { "Access-Token": accessToken } });
-                  const itemGroupData = await itemGroupRes.json();
-
-                  let itemGroupIds: string[] = [];
-                  if (itemGroupData.code === 0 && itemGroupData.data?.list) {
-                    itemGroupIds = itemGroupData.data.list.map((item: any) => item.dimensions?.item_group_id).filter(Boolean);
-                  }
-
-                  for (const igid of itemGroupIds) {
-                    let igPage = 1;
-                    let igTotalPage = 1;
-
-                    do {
-                      try {
-                        const igFilters = JSON.stringify({
-                          campaign_ids: [String(cid)],
-                          item_group_ids: [String(igid)],
-                        });
-                        const igUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(igFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${igPage}`;
-                        const igRes = await fetch(igUrl, { headers: { "Access-Token": accessToken } });
-                        const igData = await igRes.json();
-
-                        if (igData.code === 0 && igData.data?.list) {
-                          for (const item of igData.data.list) {
-                            const vid = item.dimensions?.item_id;
-                            if (vid && String(vid) !== "-1") {
-                              const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
-                              const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
-                              const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
-
-                              if (cost > 0 || gmv > 0 || orders > 0) {
-                                const existing = creativeMap.get(String(vid));
-                                if (existing) {
-                                  existing.spend += cost;
-                                  existing.gmv += gmv;
-                                  existing.orders += orders;
-                                } else {
-                                  creativeMap.set(String(vid), {
-                                    videoId: String(vid),
-                                    name: `Post ${vid}`,
-                                    spend: cost,
-                                    gmv: gmv,
-                                    orders: orders,
-                                    clicks: 0,
-                                    impressions: 0,
-                                  });
-                                }
-                              }
-                            }
-                          }
-                          igTotalPage = igData.data.page_info?.total_page || 1;
-                          igPage++;
-                        } else {
-                          break;
-                        }
-                      } catch (igErr) {
-                        break;
-                      }
-                    } while (igPage <= igTotalPage);
-                  }
-                } catch (igErr) {}
-              }
             }
           }
         }
