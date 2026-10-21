@@ -88,6 +88,9 @@ export async function GET(request: Request) {
         videoId: c.videoId,
         name: c.name,
         videoUrl,
+        authorUsername: c.authorUsername,
+        authorName: c.authorName,
+        channelType: c.channelType || "AFFILIATE",
         advertiserName: c.advertiser.name,
         shopName: c.advertiser.shop.name,
         spend,
@@ -109,6 +112,9 @@ export async function GET(request: Request) {
           videoId: "VID_MOCK_1",
           name: `Top Creative Video ad for ${shopName} - High conversion trend`,
           videoUrl: "https://www.tiktok.com/@ninhduong.lanngoc/video/7410632388751019265",
+          authorUsername: "ninhduong.lanngoc",
+          authorName: "Ninh Dương Lan Ngọc",
+          channelType: "AFFILIATE",
           advertiserName: `Mock Ads Account (${shopName})`,
           shopName: shopName,
           spend: 1800000,
@@ -122,6 +128,9 @@ export async function GET(request: Request) {
           videoId: "VID_MOCK_2",
           name: `Product unboxing lifestyle vlog - ${shopName}`,
           videoUrl: "https://www.tiktok.com/@tin_nguyen_9/video/7410655311184284948",
+          authorUsername: "tin_nguyen_9",
+          authorName: "Tin Nguyễn",
+          channelType: "INHOUSE",
           advertiserName: `Mock Ads Account (${shopName})`,
           shopName: shopName,
           spend: 1200000,
@@ -135,6 +144,9 @@ export async function GET(request: Request) {
           videoId: "VID_MOCK_3",
           name: `Underperforming hook variant - Swap video recommended`,
           videoUrl: "https://www.tiktok.com/@annhien_boiboi/video/7087900827142180123",
+          authorUsername: "annhien_boiboi",
+          authorName: "An Nhiên Bối Bối",
+          channelType: "AFFILIATE",
           advertiserName: `Mock Ads Account (${shopName})`,
           shopName: shopName,
           spend: 1000000,
@@ -157,6 +169,34 @@ export async function GET(request: Request) {
         worstCreatives,
       },
     });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, channelType, authorUsername } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Missing creative id" }, { status: 400 });
+    }
+
+    const dataToUpdate: any = {};
+    if (channelType !== undefined) {
+      dataToUpdate.channelType = channelType;
+    }
+    if (authorUsername !== undefined) {
+      dataToUpdate.authorUsername = authorUsername;
+    }
+
+    const updated = await prisma.creative.update({
+      where: { id },
+      data: dataToUpdate,
+    });
+
+    return NextResponse.json({ success: true, data: updated });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

@@ -129,13 +129,37 @@ export class SyncService {
         }
 
         // 3. Sync Creative Performance
+        // Check shop's inhouseChannels to automatically classify video channelType
+        const shop = advertiser.shopId ? await ShopRepository.findById(advertiser.shopId) : null;
+        const inhouseChannelsRaw = (shop as any)?.inhouseChannels || "";
+        const inhouseList = inhouseChannelsRaw
+          .split(/[,;\n]/)
+          .map((s: string) => s.trim().toLowerCase().replace(/^@/, ""))
+          .filter(Boolean);
+
         const creativeDataList = await TikTokApiService.getCreativePerformance(token, advertiser.advertiserId, todayStr);
         for (const creative of creativeDataList) {
+          const author = (creative.authorUsername || "").toLowerCase().replace(/^@/, "");
+          const nameLower = (creative.name || "").toLowerCase();
+          const videoUrlLower = (creative.videoUrl || "").toLowerCase();
+
+          let channelType = creative.channelType;
+          if (!channelType) {
+            const isInhouse = inhouseList.length > 0 && (
+              (author && inhouseList.includes(author)) ||
+              inhouseList.some((ch: string) => nameLower.includes(ch) || videoUrlLower.includes(`/@${ch}`) || videoUrlLower.includes(`/${ch}`))
+            );
+            channelType = isInhouse ? "INHOUSE" : "AFFILIATE";
+          }
+
           const creativeRecord = await CreativeRepository.upsertCreative({
             videoId: creative.videoId,
             name: creative.name,
             videoUrl: creative.videoUrl,
             advertiserId: advertiser.id,
+            authorUsername: creative.authorUsername || null,
+            authorName: creative.authorName || null,
+            channelType: channelType || "AFFILIATE",
           });
 
           const roi = creative.spend > 0 ? creative.gmv / creative.spend : 0;

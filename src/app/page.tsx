@@ -442,8 +442,10 @@ export default function Dashboard() {
   const [tempMinSpend, setTempMinSpend] = useState("200000");
   const [tempMaxOrders, setTempMaxOrders] = useState("20");
 
-  // Separate Auto-relaunch states for Video and LIVE
-  const [relaunchConfigTab, setRelaunchConfigTab] = useState<"video" | "live">("video");
+  // Separate Auto-relaunch states for Video and LIVE & In-house Channels
+  const [relaunchConfigTab, setRelaunchConfigTab] = useState<"video" | "live" | "channels">("video");
+  const [tempInhouseChannels, setTempInhouseChannels] = useState<string>("");
+  const [creativeChannelFilter, setCreativeChannelFilter] = useState<"ALL" | "INHOUSE" | "AFFILIATE">("ALL");
   const [tempVideoEnabled, setTempVideoEnabled] = useState(true);
   const [tempVideoRoi, setTempVideoRoi] = useState("3.0");
   const [tempVideoMinSpend, setTempVideoMinSpend] = useState("200000");
@@ -615,7 +617,14 @@ export default function Dashboard() {
   }, [toast]);
 
   // States for API data
-  const [widgets, setWidgets] = useState({
+  const [widgets, setWidgets] = useState<{
+    totalSpend: number;
+    totalGMV: number;
+    totalOrders: number;
+    averageROI: number;
+    averageCTR: number;
+    sources?: any;
+  }>({
     totalSpend: 0,
     totalGMV: 0,
     totalOrders: 0,
@@ -1282,6 +1291,7 @@ export default function Dashboard() {
       totalOrders,
       averageROI: totalSpend > 0 ? totalGMV / totalSpend : 0,
       averageCTR: totalImpressions > 0 ? totalClicks / totalImpressions : 0,
+      sources: (widgets as any)?.sources,
     };
   }, [widgets, selectedAdvertiser, gmvMaxTypeFilter, statusFilter, filteredCampaigns]);
 
@@ -1294,12 +1304,18 @@ export default function Dashboard() {
       list = list.filter((c: any) => c.advertiserName === selectedAdvertiser);
     }
 
+    // Filter by channel type (INHOUSE or AFFILIATE)
+    if (creativeChannelFilter !== "ALL") {
+      list = list.filter((c: any) => (c.channelType || "AFFILIATE") === creativeChannelFilter);
+    }
+
     // Filter by search query (name or videoId)
     if (creativeSearchQuery.trim()) {
       const q = creativeSearchQuery.toLowerCase();
       list = list.filter((c: any) => 
         (c.name && c.name.toLowerCase().includes(q)) ||
-        (c.videoId && c.videoId.toLowerCase().includes(q))
+        (c.videoId && c.videoId.toLowerCase().includes(q)) ||
+        (c.authorUsername && c.authorUsername.toLowerCase().includes(q))
       );
     }
 
@@ -1484,6 +1500,7 @@ export default function Dashboard() {
         setTempLiveRoi((currentShop.autoRelaunchLiveRoi ?? currentShop.autoRelaunchRoiThreshold ?? 3.0).toString());
         setTempLiveMinSpend((currentShop.autoRelaunchLiveMinSpend ?? currentShop.autoRelaunchMinSpend ?? 200000).toString());
         setTempLiveMaxOrders((currentShop.autoRelaunchLiveMaxOrders ?? currentShop.autoRelaunchMaxOrders ?? 20).toString());
+        setTempInhouseChannels(currentShop.inhouseChannels || "");
       }
     } else {
       setTempRoiThreshold("3.0");
@@ -1499,6 +1516,7 @@ export default function Dashboard() {
       setTempLiveRoi("3.0");
       setTempLiveMinSpend("200000");
       setTempLiveMaxOrders("20");
+      setTempInhouseChannels("");
     }
   }, [selectedShop, shops]);
 
@@ -1542,23 +1560,51 @@ export default function Dashboard() {
           autoRelaunchLiveRoi: lRoi,
           autoRelaunchLiveMinSpend: lSpend,
           autoRelaunchLiveMaxOrders: lOrders,
+          inhouseChannels: tempInhouseChannels,
         }),
       });
       const json = await res.json();
       if (json.success) {
         showToast(
           lang === "vi"
-            ? `Cấu hình tự động lên camp Video & LIVE đã được cập nhật thành công!`
-            : `Auto-relaunch conditions for Video & LIVE successfully updated!`,
+            ? `Cấu hình tự động lên camp & Kênh In-house đã được cập nhật thành công!`
+            : `Auto-relaunch conditions & In-house channels updated successfully!`,
           "success"
         );
         fetchShops();
       } else {
-        showToast(json.error || "Failed to update settings", "error");
+        showToast(`Save failed: ${json.error}`, "error");
       }
-    } catch (err) {
-      console.error(err);
-      showToast("Error updating settings", "error");
+    } catch (e: any) {
+      showToast("Could not save settings.", "error");
+    }
+  };
+
+  const handleToggleCreativeChannel = async (creativeId: string, currentType: string) => {
+    const nextType = currentType === "INHOUSE" ? "AFFILIATE" : "INHOUSE";
+    try {
+      const res = await fetch("/api/creatives", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: creativeId, channelType: nextType }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(
+          lang === "vi" 
+            ? `Đã chuyển video sang: ${nextType === "INHOUSE" ? "🏢 In-house (Kênh nhà)" : "✨ Affiliate (KOC)"}` 
+            : `Updated to: ${nextType}`, 
+          "success"
+        );
+        setCreativesData((prev: any) => ({
+          ...prev,
+          creatives: (prev.creatives || []).map((c: any) => c.id === creativeId ? { ...c, channelType: nextType } : c)
+        }));
+        // Reload dashboard silently to update source widgets immediately
+        fetchData(startDate, endDate, true);
+      }
+    } catch (e) {
+      showToast(lang === "vi" ? "Lỗi cập nhật phân loại video" : "Failed to update creative", "error");
     }
   };
 
@@ -2628,139 +2674,181 @@ export default function Dashboard() {
                         </div>
 
                         {/* Video vs LIVE Sub-tabs */}
-                        <div className="grid grid-cols-2 p-1 bg-[#15181F] rounded-lg border border-[#2B303C]/80 gap-1">
+                        {/* Video vs LIVE vs In-house Sub-tabs */}
+                        <div className="grid grid-cols-3 p-1 bg-[#15181F] rounded-lg border border-[#2B303C]/80 gap-1">
                           <button
                             type="button"
                             onClick={() => setRelaunchConfigTab("video")}
-                            className={`py-1.5 px-2 rounded text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            className={`py-1.5 px-1 rounded text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
                               relaunchConfigTab === "video"
                                 ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
                                 : "text-gray-400 hover:text-gray-200"
                             }`}
                           >
                             <span>🎬</span>
-                            <span>{lang === "vi" ? "Chiến dịch Video" : "Video Ads"}</span>
+                            <span>{lang === "vi" ? "Video" : "Video"}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => setRelaunchConfigTab("live")}
-                            className={`py-1.5 px-2 rounded text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            className={`py-1.5 px-1 rounded text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
                               relaunchConfigTab === "live"
                                 ? "bg-rose-600 text-white shadow-md shadow-rose-600/30"
                                 : "text-gray-400 hover:text-gray-200"
                             }`}
                           >
                             <span>🔴</span>
-                            <span>{lang === "vi" ? "Chiến dịch LIVE" : "LIVE Ads"}</span>
+                            <span>{lang === "vi" ? "LIVE" : "LIVE"}</span>
                           </button>
-                        </div>
-
-                        {/* Switch Enabled / Disabled */}
-                        <div className="flex items-center justify-between gap-3 bg-[#15181F] border border-[#2B303C] rounded-lg px-3 py-2">
-                          <div className="flex flex-col">
-                            <span className="text-[11px] text-gray-200 font-bold">
-                              {relaunchConfigTab === "video"
-                                ? (lang === "vi" ? "Tự động lên camp Video" : "Auto-relaunch Video")
-                                : (lang === "vi" ? "Tự động lên camp LIVE" : "Auto-relaunch LIVE")}
-                            </span>
-                            <span className="text-[9px] text-gray-500 font-mono">
-                              {relaunchConfigTab === "video" ? "ShoppingAds: PRODUCT" : "ShoppingAds: LIVE"}
-                            </span>
-                          </div>
                           <button
                             type="button"
-                            onClick={() => {
-                              if (relaunchConfigTab === "video") {
-                                setTempVideoEnabled(!tempVideoEnabled);
-                              } else {
-                                setTempLiveEnabled(!tempLiveEnabled);
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded text-[10px] font-bold font-mono transition-all ${
-                              (relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled)
-                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                : "bg-gray-800 text-gray-400 border border-gray-700"
+                            onClick={() => setRelaunchConfigTab("channels")}
+                            className={`py-1.5 px-1 rounded text-[10px] font-bold transition-all flex items-center justify-center gap-1 ${
+                              relaunchConfigTab === "channels"
+                                ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
+                                : "text-gray-400 hover:text-gray-200"
                             }`}
                           >
-                            {(relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled)
-                              ? (lang === "vi" ? "✓ ĐANG BẬT" : "✓ ENABLED")
-                              : (lang === "vi" ? "✕ ĐANG TẮT" : "✕ DISABLED")}
+                            <span>🏢</span>
+                            <span>{lang === "vi" ? "In-house" : "In-house"}</span>
                           </button>
                         </div>
 
-                        {/* Threshold inputs */}
-                        {(relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled) ? (
-                          <div className="flex flex-col gap-3">
-                            {/* ROI Input */}
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex flex-col">
-                                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Ngưỡng ROI <" : "Min ROI <"}</span>
-                                <span className="text-[9px] text-gray-500">{lang === "vi" ? "Tự tắt & lên lại nếu ROI thấp hơn" : "Pause & relaunch if ROI below"}</span>
-                              </div>
-                              <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                                <input
-                                  type="number"
-                                  step="0.1"
-                                  min="0.1"
-                                  max="10"
-                                  value={relaunchConfigTab === "video" ? tempVideoRoi : tempLiveRoi}
-                                  onChange={(e) => {
-                                    if (relaunchConfigTab === "video") setTempVideoRoi(e.target.value);
-                                    else setTempLiveRoi(e.target.value);
-                                  }}
-                                  className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
-                                />
-                              </div>
+                        {relaunchConfigTab === "channels" ? (
+                          <div className="flex flex-col gap-2 p-3 bg-[#15181F] border border-[#2B303C] rounded-lg">
+                            <div className="flex flex-col">
+                              <span className="text-[11px] text-gray-200 font-bold">
+                                {lang === "vi" ? "Kênh TikTok In-house của Shop" : "In-house TikTok Channels"}
+                              </span>
+                              <span className="text-[9px] text-gray-400 mt-0.5 leading-relaxed">
+                                {lang === "vi"
+                                  ? "Nhập các username kênh TikTok chính thức của shop (ngăn cách bằng dấu phẩy). Video từ các kênh này tự động tính là In-house, các video còn lại là Affiliate."
+                                  : "Enter official TikTok usernames separated by comma. Videos from these handles are marked In-house, others Affiliate."}
+                              </span>
                             </div>
-
-                            {/* Spend Input */}
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex flex-col">
-                                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
-                                <span className="text-[9px] text-gray-500">{lang === "vi" ? "Đạt chi tiêu mới bắt đầu xét duyệt" : "Minimum spend required"}</span>
-                              </div>
-                              <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2 py-1.5">
-                                <input
-                                  type="text"
-                                  value={formatNumberString(relaunchConfigTab === "video" ? tempVideoMinSpend : tempLiveMinSpend)}
-                                  onChange={(e) => {
-                                    const val = e.target.value.replace(/\D/g, "");
-                                    if (relaunchConfigTab === "video") setTempVideoMinSpend(val);
-                                    else setTempLiveMinSpend(val);
-                                  }}
-                                  className="w-20 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
-                                />
-                                <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
-                              </div>
-                            </div>
-
-                            {/* Orders Input */}
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex flex-col">
-                                <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Lượng đơn <" : "Orders <"}</span>
-                                <span className="text-[9px] text-gray-500">{lang === "vi" ? "Đạt từ số đơn này sẽ không bị tắt" : "Safety: keep if orders reach this"}</span>
-                              </div>
-                              <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
-                                <input
-                                  type="number"
-                                  step="1"
-                                  min="0"
-                                  value={relaunchConfigTab === "video" ? tempVideoMaxOrders : tempLiveMaxOrders}
-                                  onChange={(e) => {
-                                    if (relaunchConfigTab === "video") setTempVideoMaxOrders(e.target.value);
-                                    else setTempLiveMaxOrders(e.target.value);
-                                  }}
-                                  className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
-                                />
-                              </div>
-                            </div>
+                            <textarea
+                              rows={3}
+                              placeholder="@actiscar_malaysia, @actiscar_official"
+                              value={tempInhouseChannels}
+                              onChange={(e) => setTempInhouseChannels(e.target.value)}
+                              className="bg-[#0E1015] text-indigo-300 text-xs border border-[#2B303C] rounded-lg p-2.5 outline-none focus:border-indigo-500 font-mono resize-none w-full"
+                            />
+                            <span className="text-[9px] text-gray-500 font-mono">
+                              {tempInhouseChannels.trim()
+                                ? `${tempInhouseChannels.split(/[,;\n]/).filter(s => s.trim()).length} ${lang === "vi" ? "kênh đã cấu hình" : "channels configured"}`
+                                : (lang === "vi" ? "Chưa có kênh nào (Tất cả video coi như Affiliate)" : "No channels configured (All videos treated as Affiliate)")}
+                            </span>
                           </div>
                         ) : (
-                          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-300 leading-relaxed">
-                            {lang === "vi"
-                              ? `Đang TẮT tự động lên camp cho ${relaunchConfigTab === "video" ? "Video" : "LIVE"}. Bot sẽ không tự tắt hoặc tái khởi tạo các chiến dịch loại này.`
-                              : `Auto-relaunch is DISABLED for ${relaunchConfigTab === "video" ? "Video" : "LIVE"}. Bot will not pause or clone campaigns of this type.`}
-                          </div>
+                          <>
+                            {/* Switch Enabled / Disabled */}
+                            <div className="flex items-center justify-between gap-3 bg-[#15181F] border border-[#2B303C] rounded-lg px-3 py-2">
+                              <div className="flex flex-col">
+                                <span className="text-[11px] text-gray-200 font-bold">
+                                  {relaunchConfigTab === "video"
+                                    ? (lang === "vi" ? "Tự động lên camp Video" : "Auto-relaunch Video")
+                                    : (lang === "vi" ? "Tự động lên camp LIVE" : "Auto-relaunch LIVE")}
+                                </span>
+                                <span className="text-[9px] text-gray-500 font-mono">
+                                  {relaunchConfigTab === "video" ? "ShoppingAds: PRODUCT" : "ShoppingAds: LIVE"}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (relaunchConfigTab === "video") {
+                                    setTempVideoEnabled(!tempVideoEnabled);
+                                  } else {
+                                    setTempLiveEnabled(!tempLiveEnabled);
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded text-[10px] font-bold font-mono transition-all ${
+                                  (relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled)
+                                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                    : "bg-gray-800 text-gray-400 border border-gray-700"
+                                }`}
+                              >
+                                {(relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled)
+                                  ? (lang === "vi" ? "✓ ĐANG BẬT" : "✓ ENABLED")
+                                  : (lang === "vi" ? "✕ ĐANG TẮT" : "✕ DISABLED")}
+                              </button>
+                            </div>
+
+                            {/* Threshold inputs */}
+                            {(relaunchConfigTab === "video" ? tempVideoEnabled : tempLiveEnabled) ? (
+                              <div className="flex flex-col gap-3">
+                                {/* ROI Input */}
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Ngưỡng ROI <" : "Min ROI <"}</span>
+                                    <span className="text-[9px] text-gray-500">{lang === "vi" ? "Tự tắt & lên lại nếu ROI thấp hơn" : "Pause & relaunch if ROI below"}</span>
+                                  </div>
+                                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      min="0.1"
+                                      max="10"
+                                      value={relaunchConfigTab === "video" ? tempVideoRoi : tempLiveRoi}
+                                      onChange={(e) => {
+                                        if (relaunchConfigTab === "video") setTempVideoRoi(e.target.value);
+                                        else setTempLiveRoi(e.target.value);
+                                      }}
+                                      className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Spend Input */}
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Chi tiêu ≥" : "Spend ≥"}</span>
+                                    <span className="text-[9px] text-gray-500">{lang === "vi" ? "Đạt chi tiêu mới bắt đầu xét duyệt" : "Minimum spend required"}</span>
+                                  </div>
+                                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all pl-3 pr-2 py-1.5">
+                                    <input
+                                      type="text"
+                                      value={formatNumberString(relaunchConfigTab === "video" ? tempVideoMinSpend : tempLiveMinSpend)}
+                                      onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, "");
+                                        if (relaunchConfigTab === "video") setTempVideoMinSpend(val);
+                                        else setTempLiveMinSpend(val);
+                                      }}
+                                      className="w-20 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                                    />
+                                    <span className="text-[10px] text-gray-500 font-mono ml-1">đ</span>
+                                  </div>
+                                </div>
+
+                                {/* Orders Input */}
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] text-gray-400 font-mono uppercase font-bold">{lang === "vi" ? "Lượng đơn <" : "Orders <"}</span>
+                                    <span className="text-[9px] text-gray-500">{lang === "vi" ? "Đạt từ số đơn này sẽ không bị tắt" : "Safety: keep if orders reach this"}</span>
+                                  </div>
+                                  <div className="flex items-center bg-[#15181F] border border-[#2B303C] hover:border-indigo-500/50 focus-within:border-indigo-500 rounded-lg transition-all px-3 py-1.5">
+                                    <input
+                                      type="number"
+                                      step="1"
+                                      min="0"
+                                      value={relaunchConfigTab === "video" ? tempVideoMaxOrders : tempLiveMaxOrders}
+                                      onChange={(e) => {
+                                        if (relaunchConfigTab === "video") setTempVideoMaxOrders(e.target.value);
+                                        else setTempLiveMaxOrders(e.target.value);
+                                      }}
+                                      className="w-12 bg-transparent text-white text-xs font-mono font-bold outline-none text-right"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[10px] text-amber-300 leading-relaxed">
+                                {lang === "vi"
+                                  ? `Đang TẮT tự động lên camp cho ${relaunchConfigTab === "video" ? "Video" : "LIVE"}. Bot sẽ không tự tắt hoặc tái khởi tạo các chiến dịch loại này.`
+                                  : `Auto-relaunch is DISABLED for ${relaunchConfigTab === "video" ? "Video" : "LIVE"}. Bot will not pause or clone campaigns of this type.`}
+                              </div>
+                            )}
+                          </>
                         )}
 
                         {/* Save Button */}
@@ -2944,6 +3032,139 @@ export default function Dashboard() {
             </div>
             <div className="mt-2 h-1 w-full bg-[#1F232B] rounded-full overflow-hidden">
               <div className="h-full bg-pink-500 w-2/5 rounded-full" />
+            </div>
+          </div>
+        </section>
+
+        {/* 4 Revenue Sources Breakdown (Live, Video In-house, Video Affiliate, Thẻ sản phẩm) */}
+        <section className="bg-[#111318] border border-[#1F232B] rounded-xl p-4 sm:p-5 flex flex-col gap-3.5 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1F232B] pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-6 w-1 bg-gradient-to-b from-indigo-500 via-rose-500 to-emerald-500 rounded-full" />
+              <div>
+                <h3 className="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
+                  <span>{lang === "vi" ? "PHÂN BỔ DOANH THU THEO NGUỒN" : "REVENUE BREAKDOWN BY SOURCE"}</span>
+                  <span className="text-[9px] font-normal normal-case px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    {lang === "vi" ? "Tự động phân loại" : "Auto-categorized"}
+                  </span>
+                </h3>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  {lang === "vi" 
+                    ? "Hiệu quả chi tiết giữa Livestream, Video In-house (kênh nhà), Video Affiliate (KOC) và Thẻ sản phẩm" 
+                    : "Performance split between Live, In-house Video, Affiliate Video and Product Cards"}
+                </p>
+              </div>
+            </div>
+            {selectedShop && (
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-[10px] font-mono text-gray-400 bg-[#15181F] border border-[#2B303C] px-2.5 py-1 rounded-md">
+                  {lang === "vi" ? "Kênh In-house: " : "In-house: "}
+                  <strong className="text-emerald-400">
+                    {tempInhouseChannels.trim() ? tempInhouseChannels : (lang === "vi" ? "Chưa cài đặt" : "None")}
+                  </strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRelaunchConfigTab("channels");
+                    setIsRelaunchConfigOpen(true);
+                  }}
+                  className="text-[10px] font-mono text-indigo-400 hover:text-indigo-300 underline"
+                  title={lang === "vi" ? "Cài đặt danh sách kênh TikTok In-house" : "Configure in-house channels"}
+                >
+                  {lang === "vi" ? "Cài đặt" : "Edit"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* 1. Live Shopping */}
+            <div className="bg-[#15181F] border border-rose-500/20 hover:border-rose-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1.5 font-mono uppercase">
+                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                  {lang === "vi" ? "Doanh thu LIVE" : "LIVE Shopping"}
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-950/70 text-rose-300 border border-rose-900/60 font-bold">
+                  ROI: {((activeWidgets as any).sources?.live?.roi || 0).toFixed(2)}x
+                </span>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-xl font-bold text-white tracking-tight">
+                  {formatVND((activeWidgets as any).sources?.live?.gmv || 0)}
+                </span>
+                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
+                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.live?.spend || 0)}</strong></span>
+                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-rose-400">{(activeWidgets as any).sources?.live?.orders || 0}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Video In-house */}
+            <div className="bg-[#15181F] border border-emerald-500/20 hover:border-emerald-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 font-mono uppercase">
+                  <span>🎬</span>
+                  {lang === "vi" ? "Video In-house" : "In-house Video"}
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-900/60 font-bold">
+                  ROI: {((activeWidgets as any).sources?.inhouse?.roi || 0).toFixed(2)}x
+                </span>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-xl font-bold text-white tracking-tight">
+                  {formatVND((activeWidgets as any).sources?.inhouse?.gmv || 0)}
+                </span>
+                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
+                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.inhouse?.spend || 0)}</strong></span>
+                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-emerald-400">{(activeWidgets as any).sources?.inhouse?.orders || 0}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Video Affiliate (KOC) */}
+            <div className="bg-[#15181F] border border-indigo-500/20 hover:border-indigo-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-indigo-400 flex items-center gap-1.5 font-mono uppercase">
+                  <span>✨</span>
+                  {lang === "vi" ? "Video Affiliate (KOC)" : "Affiliate Video"}
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-900/60 font-bold">
+                  ROI: {((activeWidgets as any).sources?.affiliate?.roi || 0).toFixed(2)}x
+                </span>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-xl font-bold text-white tracking-tight">
+                  {formatVND((activeWidgets as any).sources?.affiliate?.gmv || 0)}
+                </span>
+                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
+                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.affiliate?.spend || 0)}</strong></span>
+                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-indigo-400">{(activeWidgets as any).sources?.affiliate?.orders || 0}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Thẻ sản phẩm (Product Cards) */}
+            <div className="bg-[#15181F] border border-cyan-500/20 hover:border-cyan-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-cyan-400 flex items-center gap-1.5 font-mono uppercase">
+                  <span>🛍️</span>
+                  {lang === "vi" ? "Thẻ sản phẩm (Shop Tab)" : "Product Cards"}
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-300 border border-cyan-900/60 font-bold">
+                  ROI: {((activeWidgets as any).sources?.productCard?.roi || 0).toFixed(2)}x
+                </span>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-xl font-bold text-white tracking-tight">
+                  {formatVND((activeWidgets as any).sources?.productCard?.gmv || 0)}
+                </span>
+                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
+                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.productCard?.spend || 0)}</strong></span>
+                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-cyan-400">{(activeWidgets as any).sources?.productCard?.orders || 0}</strong></span>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -3904,6 +4125,17 @@ export default function Dashboard() {
                         onChange={(e) => setCreativeSearchQuery(e.target.value)}
                         className="bg-[#15181F] text-gray-300 text-[11px] border border-[#2B303C] rounded px-3 py-1.5 outline-none focus:border-indigo-500 w-60 transition-all"
                       />
+
+                      {/* Filter by Channel Type */}
+                      <select
+                        value={creativeChannelFilter}
+                        onChange={(e) => setCreativeChannelFilter(e.target.value as any)}
+                        className="bg-[#15181F] text-gray-300 text-[11px] border border-[#2B303C] rounded px-2.5 py-1.5 cursor-pointer outline-none hover:border-indigo-500 transition-colors"
+                      >
+                        <option value="ALL">{lang === "vi" ? "Tất cả kênh" : "All Channels"}</option>
+                        <option value="INHOUSE">{lang === "vi" ? "🏢 Kênh In-house" : "In-house Only"}</option>
+                        <option value="AFFILIATE">{lang === "vi" ? "✨ Kênh Affiliate (KOC)" : "Affiliate Only"}</option>
+                      </select>
                     </div>
 
                     {/* Sorting Controls */}
@@ -4004,6 +4236,26 @@ export default function Dashboard() {
                                       <span className="font-semibold text-white block truncate" title={c.name}>
                                         {c.name}
                                       </span>
+                                      <div className="flex items-center gap-1.5 mt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleCreativeChannel(c.id, c.channelType || "AFFILIATE")}
+                                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border transition-colors flex items-center gap-1 ${
+                                            c.channelType === "INHOUSE"
+                                              ? "bg-emerald-950/70 text-emerald-300 border-emerald-800/40 hover:bg-emerald-900/60"
+                                              : "bg-indigo-950/70 text-indigo-300 border-indigo-800/40 hover:bg-indigo-900/60"
+                                          }`}
+                                          title={lang === "vi" ? "Click để chuyển đổi giữa In-house và Affiliate" : "Toggle In-house / Affiliate"}
+                                        >
+                                          <span>{c.channelType === "INHOUSE" ? "🏢 In-house" : "✨ Affiliate"}</span>
+                                          <span className="text-[8px] opacity-70">⇄</span>
+                                        </button>
+                                        {c.authorUsername && (
+                                          <span className="text-[9px] font-mono text-gray-400 truncate max-w-[90px]" title={`@${c.authorUsername}`}>
+                                            @{c.authorUsername}
+                                          </span>
+                                        )}
+                                      </div>
                                       <span className="text-[9px] font-mono text-gray-500 block mt-0.5">
                                         ID: {c.videoId}
                                       </span>

@@ -38,6 +38,7 @@ export async function POST(request: Request) {
       autoRelaunchLiveRoi,
       autoRelaunchLiveMinSpend,
       autoRelaunchLiveMaxOrders,
+      inhouseChannels,
     } = body;
 
     if (!name || !tiktokShopId) {
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
         autoRelaunchLiveRoi: autoRelaunchLiveRoi !== undefined ? parseFloat(autoRelaunchLiveRoi) : (autoRelaunchRoiThreshold !== undefined ? parseFloat(autoRelaunchRoiThreshold) : 3.0),
         autoRelaunchLiveMinSpend: autoRelaunchLiveMinSpend !== undefined ? parseFloat(autoRelaunchLiveMinSpend) : (autoRelaunchMinSpend !== undefined ? parseFloat(autoRelaunchMinSpend) : 200000.0),
         autoRelaunchLiveMaxOrders: autoRelaunchLiveMaxOrders !== undefined ? parseInt(autoRelaunchLiveMaxOrders) : (autoRelaunchMaxOrders !== undefined ? parseInt(autoRelaunchMaxOrders) : 20),
+        inhouseChannels: inhouseChannels !== undefined && inhouseChannels !== null ? String(inhouseChannels).trim() : null,
         status: "ACTIVE",
       },
     });
@@ -97,6 +99,7 @@ export async function PUT(request: Request) {
       autoRelaunchLiveRoi,
       autoRelaunchLiveMinSpend,
       autoRelaunchLiveMaxOrders,
+      inhouseChannels,
     } = body;
 
     if (!id) {
@@ -142,6 +145,9 @@ export async function PUT(request: Request) {
     }
     if (autoRelaunchLiveMaxOrders !== undefined) {
       dataToUpdate.autoRelaunchLiveMaxOrders = parseInt(autoRelaunchLiveMaxOrders);
+    }
+    if (inhouseChannels !== undefined) {
+      dataToUpdate.inhouseChannels = inhouseChannels && String(inhouseChannels).trim() ? String(inhouseChannels).trim() : null;
     }
 
     const shop = await prisma.shop.update({

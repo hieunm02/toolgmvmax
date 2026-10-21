@@ -14,6 +14,9 @@ export class CreativeRepository {
     name: string;
     videoUrl?: string;
     advertiserId: string;
+    authorUsername?: string | null;
+    authorName?: string | null;
+    channelType?: string | null;
   }): Promise<Creative> {
     return prisma.creative.upsert({
       where: { videoId: data.videoId },
@@ -21,12 +24,18 @@ export class CreativeRepository {
         name: data.name,
         videoUrl: data.videoUrl,
         advertiserId: data.advertiserId,
+        ...(data.authorUsername !== undefined ? { authorUsername: data.authorUsername } : {}),
+        ...(data.authorName !== undefined ? { authorName: data.authorName } : {}),
+        ...(data.channelType !== undefined ? { channelType: data.channelType } : {}),
       },
       create: {
         videoId: data.videoId,
         name: data.name,
         videoUrl: data.videoUrl,
         advertiserId: data.advertiserId,
+        authorUsername: data.authorUsername || null,
+        authorName: data.authorName || null,
+        channelType: data.channelType || "AFFILIATE",
       },
     });
   }
@@ -100,6 +109,9 @@ export class CreativeRepository {
         videoId: true,
         name: true,
         videoUrl: true,
+        authorUsername: true,
+        authorName: true,
+        channelType: true,
         advertiser: {
           select: {
             name: true,

@@ -52,23 +52,130 @@ export async function GET(request: Request) {
         orders: true,
         impressions: true,
         clicks: true,
+        campaign: {
+          select: {
+            shoppingAdsType: true,
+          },
+        },
       },
     });
 
-    // Aggregate widgets
+    // Query creative reports for Video In-house vs Video Affiliate breakdown
+    const creativeWhere: any = {
+      creative: {
+        advertiser: {
+          status: "ACTIVE",
+          ...(shopId ? { shopId } : {}),
+        },
+      },
+    };
+    if (whereClause.date) {
+      creativeWhere.date = whereClause.date;
+    }
+
+    const creativeReports = await prisma.creativeReport.findMany({
+      where: creativeWhere,
+      select: {
+        spend: true,
+        gmv: true,
+        orders: true,
+        creative: {
+          select: {
+            channelType: true,
+          },
+        },
+      },
+    });
+
+    // Aggregate widgets & 4 Sources Breakdown
     let totalSpend = 0;
     let totalGMV = 0;
     let totalOrders = 0;
     let totalImpressions = 0;
     let totalClicks = 0;
 
-    reports.forEach((r) => {
+    let liveSpend = 0;
+    let liveGmv = 0;
+    let liveOrders = 0;
+
+    let productCampSpend = 0;
+    let productCampGmv = 0;
+    let productCampOrders = 0;
+
+    reports.forEach((r: any) => {
       totalSpend += r.spend;
       totalGMV += r.gmv;
       totalOrders += r.orders;
       totalImpressions += r.impressions;
       totalClicks += r.clicks;
+
+      if (r.campaign?.shoppingAdsType === "LIVE") {
+        liveSpend += r.spend;
+        liveGmv += r.gmv;
+        liveOrders += r.orders;
+      } else {
+        productCampSpend += r.spend;
+        productCampGmv += r.gmv;
+        productCampOrders += r.orders;
+      }
     });
+
+    // In-house Video vs Affiliate Video
+    let inhouseSpend = 0;
+    let inhouseGmv = 0;
+    let inhouseOrders = 0;
+
+    let affiliateSpend = 0;
+    let affiliateGmv = 0;
+    let affiliateOrders = 0;
+
+    creativeReports.forEach((cr: any) => {
+      if (cr.creative?.channelType === "INHOUSE") {
+        inhouseSpend += cr.spend;
+        inhouseGmv += cr.gmv;
+        inhouseOrders += cr.orders;
+      } else {
+        affiliateSpend += cr.spend;
+        affiliateGmv += cr.gmv;
+        affiliateOrders += cr.orders;
+      }
+    });
+
+    const totalVideoSpend = inhouseSpend + affiliateSpend;
+    const totalVideoGmv = inhouseGmv + affiliateGmv;
+    const totalVideoOrders = inhouseOrders + affiliateOrders;
+
+    // Product Card Ads (Thẻ sản phẩm / Shopping Showcase)
+    const cardSpend = Math.max(0, productCampSpend - totalVideoSpend);
+    const cardGmv = Math.max(0, productCampGmv - totalVideoGmv);
+    const cardOrders = Math.max(0, productCampOrders - totalVideoOrders);
+
+    const sources = {
+      live: {
+        spend: liveSpend,
+        gmv: liveGmv,
+        orders: liveOrders,
+        roi: liveSpend > 0 ? liveGmv / liveSpend : 0,
+      },
+      inhouse: {
+        spend: inhouseSpend,
+        gmv: inhouseGmv,
+        orders: inhouseOrders,
+        roi: inhouseSpend > 0 ? inhouseGmv / inhouseSpend : 0,
+      },
+      affiliate: {
+        spend: affiliateSpend,
+        gmv: affiliateGmv,
+        orders: affiliateOrders,
+        roi: affiliateSpend > 0 ? affiliateGmv / affiliateSpend : 0,
+      },
+      productCard: {
+        spend: cardSpend,
+        gmv: cardGmv,
+        orders: cardOrders,
+        roi: cardSpend > 0 ? cardGmv / cardSpend : 0,
+      },
+    };
 
     const averageROI = totalSpend > 0 ? totalGMV / totalSpend : 0;
     const averageCTR = totalImpressions > 0 ? totalClicks / totalImpressions : 0;
@@ -94,6 +201,7 @@ export async function GET(request: Request) {
           totalOrders,
           averageROI,
           averageCTR,
+          sources,
         },
         chartData,
       },

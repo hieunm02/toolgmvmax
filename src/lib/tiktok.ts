@@ -37,6 +37,9 @@ export interface TikTokCreativeData {
   orders: number;
   impressions: number;
   clicks: number;
+  authorUsername?: string;
+  authorName?: string;
+  channelType?: "INHOUSE" | "AFFILIATE";
 }
 
 export class TikTokApiService {
@@ -576,7 +579,7 @@ export class TikTokApiService {
       const videoIds = reportList.map((item: any) => item.dimensions?.video_id).filter(Boolean);
       
       // 2. Fetch video metadata to resolve Names and URLs from Asset Library
-      const videoNamesMap = new Map<string, { name: string; url?: string }>();
+      const videoNamesMap = new Map<string, { name: string; url?: string; authorUsername?: string; authorName?: string }>();
       try {
         const libraryUrl = `${this.getBaseUrl()}/file/video/ad/search/?advertiser_id=${advertiserId}&video_ids=${encodeURIComponent(JSON.stringify(videoIds))}`;
         const libraryResponse = await fetch(libraryUrl, {
@@ -587,9 +590,13 @@ export class TikTokApiService {
         if (libraryData.code === 0 && libraryData.data && libraryData.data.list) {
           for (const video of libraryData.data.list) {
             if (video.video_id) {
+              const url = video.preview_url || video.video_url;
+              const urlMatch = url?.match(/@([^/?]+)/);
               videoNamesMap.set(video.video_id, {
                 name: video.video_name || `Video ${video.video_id}`,
-                url: video.preview_url
+                url,
+                authorUsername: urlMatch ? urlMatch[1] : (video.author_username || video.identity_name || undefined),
+                authorName: video.author_name || undefined,
               });
             }
           }
@@ -602,10 +609,15 @@ export class TikTokApiService {
       const creativeStats: TikTokCreativeData[] = reportList.map((item: any) => {
         const vid = item.dimensions?.video_id;
         const meta = videoNamesMap.get(vid);
+        const videoUrl = meta?.url || `https://www.tiktok.com/play/${vid}`;
+        const urlMatch = videoUrl?.match(/@([^/?]+)/);
+        const authorUsername = meta?.authorUsername || (urlMatch ? urlMatch[1] : undefined);
         return {
           videoId: vid,
           name: meta?.name || `Creative Video ${vid}`,
-          videoUrl: meta?.url || `https://www.tiktok.com/play/${vid}`,
+          videoUrl,
+          authorUsername,
+          authorName: meta?.authorName,
           spend: Number(item.metrics?.spend || 0),
           gmv: Number(item.metrics?.value_per_complete_payment || 0),
           orders: Number(item.metrics?.complete_payment || 0),

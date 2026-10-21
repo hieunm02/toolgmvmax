@@ -41,6 +41,9 @@ model Shop {
   autoRelaunchLiveRoi        Float      @default(3.0)
   autoRelaunchLiveMinSpend   Float      @default(200000.0)
   autoRelaunchLiveMaxOrders  Int        @default(20)
+
+  // In-house TikTok channels (comma-separated usernames, e.g. "@actiscar_malaysia, @actiscar_official")
+  inhouseChannels            String?
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
   users                    User[]       @relation("UserShops")
@@ -108,15 +111,18 @@ model Product {
 }
 
 model Creative {
-  id           String           @id @default(uuid())
-  videoId      String           @unique
-  name         String
-  videoUrl     String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  advertiserId String
-  advertiser   Advertiser       @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
-  reports      CreativeReport[]
+  id             String           @id @default(uuid())
+  videoId        String           @unique
+  name           String
+  videoUrl       String?
+  authorUsername String?
+  authorName     String?
+  channelType    String?          @default("AFFILIATE") // INHOUSE, AFFILIATE
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  advertiserId   String
+  advertiser     Advertiser       @relation(fields: [advertiserId], references: [id], onDelete: Cascade)
+  reports        CreativeReport[]
 
   @@map("creatives")
 }
