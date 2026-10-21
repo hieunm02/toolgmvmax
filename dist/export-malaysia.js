@@ -1295,6 +1295,13 @@ async function runExportMalaysiaOctober() {
     grandTotalRoi.toFixed(2)
   ].join(",");
   const csvContent = "\uFEFF" + [header, ...csvLines, totalLine].join("\r\n");
+  try {
+    const outputPath = path.resolve(process.cwd(), "malaysia_october_report.csv");
+    fs.writeFileSync(outputPath, csvContent, "utf8");
+    console.log(`[EXPORT] \u0110\xE3 l\u01B0u file t\u1EA1i: ${outputPath}`);
+  } catch (writeErr) {
+    console.warn("[EXPORT] Kh\xF4ng th\u1EC3 ghi file ra \u0111\u0129a:", writeErr.message);
+  }
   const summary = {
     live: { spend: grandTotalLiveSpend, gmv: grandTotalLiveGmv, orders: grandTotalLiveOrders, roi: grandLiveRoi },
     inhouse: { spend: grandTotalInhouseSpend, gmv: grandTotalInhouseGmv, orders: grandTotalInhouseOrders, roi: grandInhouseRoi },

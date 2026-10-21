@@ -459,6 +459,7 @@ export default function Dashboard() {
   const [dbAdvertisers, setDbAdvertisers] = useState<any[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
   const [sendingReport, setSendingReport] = useState<boolean>(false);
+  const [exportingSheet, setExportingSheet] = useState<boolean>(false);
   const [showHistoricalSyncModal, setShowHistoricalSyncModal] = useState<boolean>(false);
   const [historicalSyncing, setHistoricalSyncing] = useState<boolean>(false);
   const [historicalSyncStart, setHistoricalSyncStart] = useState<string>("");
@@ -1915,6 +1916,50 @@ export default function Dashboard() {
     }
   };
 
+  // Export October Direct TikTok API Report handler
+  const handleExportOctoberReport = async () => {
+    setExportingSheet(true);
+    showToast(
+      lang === "vi" 
+        ? "Đang kết nối TikTok API kéo dữ liệu 21 ngày tháng 10... Vui lòng đợi trong giây lát!" 
+        : "Fetching 21 days from TikTok API... Please wait!", 
+      "info"
+    );
+    try {
+      const response = await fetch("/api/export/malaysia");
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: "Lỗi kết nối API" }));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `malaysia_october_report_${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      showToast(
+        lang === "vi" 
+          ? "Đã tải xuống thành công file báo cáo tháng 10 của Shop Malaysia!" 
+          : "October report downloaded successfully!", 
+        "success"
+      );
+    } catch (err: any) {
+      showToast(
+        lang === "vi" 
+          ? `Xuất báo cáo thất bại: ${err.message}` 
+          : `Export failed: ${err.message}`, 
+        "error"
+      );
+    } finally {
+      setExportingSheet(false);
+    }
+  };
+
   // Logout handler
   const handleLogout = async () => {
     try {
@@ -2477,17 +2522,31 @@ export default function Dashboard() {
 
               {/* Export October Report Button (Direct TikTok API) */}
               <button
-                onClick={() => {
-                  showToast(lang === "vi" ? "Đang tải file Excel/CSV báo cáo tháng 10 trực tiếp từ TikTok API..." : "Exporting October report directly from TikTok API...", "info");
-                  window.open("/api/export/malaysia", "_blank");
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-600/15 text-emerald-400 hover:bg-emerald-600/25 transition-all text-xs font-semibold cursor-pointer"
+                onClick={handleExportOctoberReport}
+                disabled={exportingSheet}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-semibold cursor-pointer ${
+                  exportingSheet
+                    ? "bg-[#15181F] border-[#2B303C] text-gray-500 cursor-not-allowed"
+                    : "border-emerald-500/30 bg-emerald-600/15 text-emerald-400 hover:bg-emerald-600/25"
+                }`}
                 title={lang === "vi" ? "Tải file Excel / CSV bóc tách 4 nguồn từ 01/10 đến nay trực tiếp từ TikTok API" : "Download October report directly from TikTok API"}
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span className="truncate">{lang === "vi" ? "Xuất Sheet T10" : "Export Sheet"}</span>
+                {exportingSheet ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>{lang === "vi" ? "Đang xuất T10..." : "Exporting..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span className="truncate">{lang === "vi" ? "Xuất Sheet T10" : "Export Sheet"}</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

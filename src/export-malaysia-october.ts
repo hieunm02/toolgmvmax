@@ -316,6 +316,15 @@ export async function runExportMalaysiaOctober(): Promise<{
 
   const csvContent = "\uFEFF" + [header, ...csvLines, totalLine].join("\r\n");
 
+  // Tự động lưu ra file trên thư mục gốc của project
+  try {
+    const outputPath = path.resolve(process.cwd(), "malaysia_october_report.csv");
+    fs.writeFileSync(outputPath, csvContent, "utf8");
+    console.log(`[EXPORT] Đã lưu file tại: ${outputPath}`);
+  } catch (writeErr: any) {
+    console.warn("[EXPORT] Không thể ghi file ra đĩa:", writeErr.message);
+  }
+
   const summary = {
     live: { spend: grandTotalLiveSpend, gmv: grandTotalLiveGmv, orders: grandTotalLiveOrders, roi: grandLiveRoi },
     inhouse: { spend: grandTotalInhouseSpend, gmv: grandTotalInhouseGmv, orders: grandTotalInhouseOrders, roi: grandInhouseRoi },
