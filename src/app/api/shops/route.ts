@@ -155,6 +155,41 @@ export async function PUT(request: Request) {
       data: dataToUpdate,
     });
 
+    // If inhouseChannels was updated, re-evaluate existing creatives immediately
+    if (inhouseChannels !== undefined) {
+      try {
+        const inhouseList = (inhouseChannels || "")
+          .split(/[,;\n]/)
+          .map((s: string) => s.trim().toLowerCase().replace(/^@/, ""))
+          .filter(Boolean);
+
+        const creatives = await prisma.creative.findMany({
+          where: { advertiser: { shopId: id } },
+        });
+
+        for (const cr of creatives) {
+          const author = (cr.authorUsername || "").toLowerCase().replace(/^@/, "");
+          const nameLower = (cr.name || "").toLowerCase();
+          const videoUrlLower = (cr.videoUrl || "").toLowerCase();
+
+          const isInhouse = inhouseList.length > 0 && (
+            (author && inhouseList.some((ch: string) => author === ch || author.includes(ch) || ch.includes(author))) ||
+            inhouseList.some((ch: string) => nameLower.includes(ch) || videoUrlLower.includes(`/@${ch}`) || videoUrlLower.includes(`/${ch}`))
+          );
+
+          const newChannel = isInhouse ? "INHOUSE" : "AFFILIATE";
+          if (cr.channelType !== newChannel) {
+            await prisma.creative.update({
+              where: { id: cr.id },
+              data: { channelType: newChannel },
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Error re-evaluating existing creatives for shop:", err);
+      }
+    }
+
     return NextResponse.json({ success: true, data: shop });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

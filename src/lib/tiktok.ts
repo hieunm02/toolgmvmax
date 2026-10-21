@@ -555,78 +555,238 @@ export class TikTokApiService {
     }
 
     try {
-      // 1. Fetch creative reports at AUCTION_AD level using video_id dimension
-      const dimensions = JSON.stringify(["video_id"]);
-      const metrics = JSON.stringify(["spend", "impressions", "clicks", "complete_payment", "value_per_complete_payment"]);
-      const reportUrl = `${this.getBaseUrl()}/report/integrated/get/?advertiser_id=${advertiserId}&report_type=BASIC&data_level=AUCTION_AD&dimensions=${encodeURIComponent(dimensions)}&metrics=${encodeURIComponent(metrics)}&start_date=${date}&end_date=${date}`;
+      const creativeMap = new Map<string, TikTokCreativeData>();
 
-      const reportResponse = await fetch(reportUrl, {
-        headers: { "Access-Token": accessToken },
-      });
-      const reportData = await reportResponse.json();
-
-      if (reportData.code !== 0) {
-        logger.error("TikTok getCreativePerformance reporting failed", reportData.message, { advertiserId });
-        return [];
-      }
-
-      const reportList = reportData.data?.list || [];
-      if (reportList.length === 0) {
-        return [];
-      }
-
-      // Extract unique video IDs from reports
-      const videoIds = reportList.map((item: any) => item.dimensions?.video_id).filter(Boolean);
+    // Strategy 1: GMV Max Creative & Material Reporting
+    try {
+      const storeListUrl = `${this.getBaseUrl()}/gmv_max/store/list/?advertiser_id=${advertiserId}`;
+      const storeRes = await fetch(storeListUrl, { headers: { "Access-Token": accessToken } });
+      const storeData = await storeRes.json();
       
-      // 2. Fetch video metadata to resolve Names and URLs from Asset Library
-      const videoNamesMap = new Map<string, { name: string; url?: string; authorUsername?: string; authorName?: string }>();
-      try {
-        const libraryUrl = `${this.getBaseUrl()}/file/video/ad/search/?advertiser_id=${advertiserId}&video_ids=${encodeURIComponent(JSON.stringify(videoIds))}`;
-        const libraryResponse = await fetch(libraryUrl, {
-          headers: { "Access-Token": accessToken },
-        });
-        const libraryData = await libraryResponse.json();
-        
-        if (libraryData.code === 0 && libraryData.data && libraryData.data.list) {
-          for (const video of libraryData.data.list) {
-            if (video.video_id) {
-              const url = video.preview_url || video.video_url;
-              const urlMatch = url?.match(/@([^/?]+)/);
-              videoNamesMap.set(video.video_id, {
-                name: video.video_name || `Video ${video.video_id}`,
-                url,
-                authorUsername: urlMatch ? urlMatch[1] : (video.author_username || video.identity_name || undefined),
-                authorName: video.author_name || undefined,
-              });
+      let storeIds: string[] = [];
+      if (storeData.code === 0 && storeData.data?.store_list) {
+        storeIds = Array.from(new Set(storeData.data.store_list.map((s: any) => s.store_id).filter(Boolean)));
+      }
+
+      if (storeIds.length > 0) {
+        for (const storeId of storeIds) {
+          const dimensionVariants = [
+            ["campaign_id", "creative/item_id"],
+            ["creative/item_id"],
+            ["campaign_id", "item_id"],
+            ["item_id"],
+          ];
+
+          for (const dims of dimensionVariants) {
+            try {
+              const gmvReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(dims))}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "clicks", "impressions"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+              const gmvRes = await fetch(gmvReportUrl, { headers: { "Access-Token": accessToken } });
+              const gmvData = await gmvRes.json();
+
+              if (gmvData.code === 0 && gmvData.data?.list && gmvData.data.list.length > 0) {
+                logger.info(`GMV Max creative report succeeded for store ${storeId} with dimensions ${JSON.stringify(dims)}: found ${gmvData.data.list.length} rows`);
+                for (const item of gmvData.data.list) {
+                  const vid = item.dimensions?.["creative/item_id"] || item.dimensions?.item_id || item.dimensions?.material_id || item.dimensions?.video_id;
+                  if (vid && String(vid) !== "-1") {
+                    const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                    const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                    const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+                    const clicks = Number(item.metrics?.clicks || 0);
+                    const impressions = Number(item.metrics?.impressions || 0);
+
+                    const existing = creativeMap.get(String(vid));
+                    if (existing) {
+                      existing.spend += cost;
+                      existing.gmv += gmv;
+                      existing.orders += orders;
+                      existing.clicks += clicks;
+                      existing.impressions += impressions;
+                    } else {
+                      creativeMap.set(String(vid), {
+                        videoId: String(vid),
+                        name: `Post ${vid}`,
+                        spend: cost,
+                        gmv: gmv,
+                        orders: orders,
+                        clicks: clicks,
+                        impressions: impressions,
+                      });
+                    }
+                  }
+                }
+                break;
+              }
+            } catch (variantErr) {
+              // Try next variant
             }
           }
         }
-      } catch (metadataError) {
-        logger.warn("Failed to fetch video library metadata. Will use default naming.", metadataError);
       }
+    } catch (gmvErr) {
+      logger.warn("GMV Max creative report query failed", gmvErr);
+    }
 
-      // 3. Construct TikTokCreativeData array
-      const creativeStats: TikTokCreativeData[] = reportList.map((item: any) => {
-        const vid = item.dimensions?.video_id;
-        const meta = videoNamesMap.get(vid);
-        const videoUrl = meta?.url || `https://www.tiktok.com/play/${vid}`;
-        const urlMatch = videoUrl?.match(/@([^/?]+)/);
-        const authorUsername = meta?.authorUsername || (urlMatch ? urlMatch[1] : undefined);
-        return {
-          videoId: vid,
-          name: meta?.name || `Creative Video ${vid}`,
-          videoUrl,
-          authorUsername,
-          authorName: meta?.authorName,
-          spend: Number(item.metrics?.spend || 0),
-          gmv: Number(item.metrics?.value_per_complete_payment || 0),
-          orders: Number(item.metrics?.complete_payment || 0),
-          impressions: Number(item.metrics?.impressions || 0),
-          clicks: Number(item.metrics?.clicks || 0),
-        };
-      });
+    // Strategy 2: Smart+ Material Report Breakdown
+    if (creativeMap.size === 0) {
+      try {
+        const smartUrl = `${this.getBaseUrl()}/smart_plus/material_report/breakdown/?advertiser_id=${advertiserId}&start_date=${date}&end_date=${date}&page_size=100`;
+        const smartRes = await fetch(smartUrl, { headers: { "Access-Token": accessToken } });
+        const smartData = await smartRes.json();
+        if (smartData.code === 0 && smartData.data?.list && smartData.data.list.length > 0) {
+          logger.info(`Smart+ material report succeeded: found ${smartData.data.list.length} items`);
+          for (const item of smartData.data.list) {
+            const vid = item.material_id || item.main_material_id || item.video_id;
+            if (vid) {
+              const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+              const gmv = Number(item.metrics?.gross_revenue || item.metrics?.conversion_value || 0);
+              const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+              const clicks = Number(item.metrics?.clicks || 0);
+              const impressions = Number(item.metrics?.impressions || 0);
 
-      return creativeStats;
+              const existing = creativeMap.get(String(vid));
+              if (existing) {
+                existing.spend += cost;
+                existing.gmv += gmv;
+                existing.orders += orders;
+              } else {
+                creativeMap.set(String(vid), {
+                  videoId: String(vid),
+                  name: item.material_name || `Material ${vid}`,
+                  spend: cost,
+                  gmv: gmv,
+                  orders: orders,
+                  clicks: clicks,
+                  impressions: impressions,
+                });
+              }
+            }
+          }
+        }
+      } catch (smartErr) {
+        logger.warn("Smart+ material report query failed", smartErr);
+      }
+    }
+
+    // Strategy 3: Standard Auction Ads (ad_id dimension)
+    if (creativeMap.size === 0) {
+      try {
+        const adReportUrl = `${this.getBaseUrl()}/report/integrated/get/?advertiser_id=${advertiserId}&report_type=BASIC&data_level=AUCTION_AD&dimensions=${encodeURIComponent(JSON.stringify(["ad_id"]))}&metrics=${encodeURIComponent(JSON.stringify(["spend", "impressions", "clicks", "complete_payment", "value_per_complete_payment"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+        const adReportRes = await fetch(adReportUrl, { headers: { "Access-Token": accessToken } });
+        const adReportData = await adReportRes.json();
+        if (adReportData.code === 0 && adReportData.data?.list) {
+          const validAds = adReportData.data.list.filter((item: any) => Number(item.metrics?.spend || 0) > 0 || Number(item.metrics?.impressions || 0) > 0);
+          if (validAds.length > 0) {
+            const adIds = validAds.map((item: any) => item.dimensions?.ad_id).filter(Boolean);
+            const adInfoUrl = `${this.getBaseUrl()}/ad/get/?advertiser_id=${advertiserId}&filtering=${encodeURIComponent(JSON.stringify({ ad_ids: adIds }))}`;
+            const adInfoRes = await fetch(adInfoUrl, { headers: { "Access-Token": accessToken } });
+            const adInfoData = await adInfoRes.json();
+            const adMap = new Map<string, any>();
+            if (adInfoData.code === 0 && adInfoData.data?.list) {
+              for (const ad of adInfoData.data.list) {
+                adMap.set(ad.ad_id, ad);
+              }
+            }
+
+            for (const item of validAds) {
+              const adId = item.dimensions?.ad_id;
+              const adMeta = adMap.get(adId);
+              const vid = adMeta?.video_id || adMeta?.tiktok_item_id || adId;
+              if (vid) {
+                const cost = Number(item.metrics?.spend || 0);
+                const gmv = Number(item.metrics?.value_per_complete_payment || 0);
+                const orders = Number(item.metrics?.complete_payment || 0);
+                const clicks = Number(item.metrics?.clicks || 0);
+                const impressions = Number(item.metrics?.impressions || 0);
+
+                const existing = creativeMap.get(String(vid));
+                if (existing) {
+                  existing.spend += cost;
+                  existing.gmv += gmv;
+                  existing.orders += orders;
+                } else {
+                  creativeMap.set(String(vid), {
+                    videoId: String(vid),
+                    name: adMeta?.ad_name || `Ad ${adId}`,
+                    spend: cost,
+                    gmv: gmv,
+                    orders: orders,
+                    clicks: clicks,
+                    impressions: impressions,
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (adErr) {
+        logger.warn("Standard ad report query failed", adErr);
+      }
+    }
+
+    // Video Metadata Resolution (from Asset Library)
+    const videoNamesMap = new Map<string, { name: string; url?: string; authorUsername?: string; authorName?: string; channelType?: "INHOUSE" | "AFFILIATE" }>();
+    try {
+      const libraryUrl = `${this.getBaseUrl()}/file/video/ad/search/?advertiser_id=${advertiserId}&page_size=100`;
+      const libraryRes = await fetch(libraryUrl, { headers: { "Access-Token": accessToken } });
+      const libraryData = await libraryRes.json();
+      if (libraryData.code === 0 && libraryData.data?.list) {
+        for (const video of libraryData.data.list) {
+          const vid = String(video.video_id);
+          const url = video.preview_url || video.video_url;
+          const urlMatch = url?.match(/@([^/?]+)/);
+          const author = urlMatch ? urlMatch[1] : (video.author_username || video.identity_name || undefined);
+          const authType = String(video.authorization_type || video.identity_type || "").toLowerCase();
+          const channelType: "INHOUSE" | "AFFILIATE" | undefined = 
+            authType.includes("official") || authType.includes("shop") ? "INHOUSE" : 
+            authType.includes("affiliate") ? "AFFILIATE" : undefined;
+
+          videoNamesMap.set(vid, {
+            name: video.video_name || `Video ${vid}`,
+            url,
+            authorUsername: author,
+            authorName: video.author_name,
+            channelType,
+          });
+
+          if (creativeMap.size === 0) {
+            creativeMap.set(vid, {
+              videoId: vid,
+              name: video.video_name || `Video ${vid}`,
+              videoUrl: url,
+              authorUsername: author,
+              authorName: video.author_name,
+              channelType,
+              spend: 0,
+              gmv: 0,
+              orders: 0,
+              clicks: 0,
+              impressions: 0,
+            });
+          }
+        }
+      }
+    } catch (metaErr) {
+      logger.warn("Failed to fetch video library metadata", metaErr);
+    }
+
+    // Construct final list
+    const result: TikTokCreativeData[] = Array.from(creativeMap.values()).map((c) => {
+      const meta = videoNamesMap.get(c.videoId);
+      const videoUrl = meta?.url || c.videoUrl || `https://www.tiktok.com/play/${c.videoId}`;
+      const urlMatch = videoUrl?.match(/@([^/?]+)/);
+      const authorUsername = meta?.authorUsername || c.authorUsername || (urlMatch ? urlMatch[1] : undefined);
+
+      return {
+        ...c,
+        name: meta?.name || c.name || `Video ${c.videoId}`,
+        videoUrl,
+        authorUsername,
+        authorName: meta?.authorName || c.authorName,
+        channelType: meta?.channelType || c.channelType,
+      };
+    });
+
+    return result;
     } catch (error) {
       logger.error("TikTok getCreativePerformance failed with error", error, { advertiserId });
       return [];
