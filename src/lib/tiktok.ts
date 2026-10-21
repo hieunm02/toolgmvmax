@@ -575,32 +575,32 @@ export class TikTokApiService {
             ["creative/item_id"],
             ["campaign_id", "item_id"],
             ["item_id"],
+            ["main_material_id"],
+            ["material_id"],
           ];
 
           for (const dims of dimensionVariants) {
             try {
-              const gmvReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(dims))}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "clicks", "impressions"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+              const gmvReportUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(dims))}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100`;
               const gmvRes = await fetch(gmvReportUrl, { headers: { "Access-Token": accessToken } });
               const gmvData = await gmvRes.json();
+
+              logger.info(`GMV Max creative report check: dims=${JSON.stringify(dims)}, code=${gmvData.code}, rows=${gmvData.data?.list?.length || 0}`);
 
               if (gmvData.code === 0 && gmvData.data?.list && gmvData.data.list.length > 0) {
                 logger.info(`GMV Max creative report succeeded for store ${storeId} with dimensions ${JSON.stringify(dims)}: found ${gmvData.data.list.length} rows`);
                 for (const item of gmvData.data.list) {
-                  const vid = item.dimensions?.["creative/item_id"] || item.dimensions?.item_id || item.dimensions?.material_id || item.dimensions?.video_id;
+                  const vid = item.dimensions?.["creative/item_id"] || item.dimensions?.item_id || item.dimensions?.material_id || item.dimensions?.main_material_id || item.dimensions?.video_id;
                   if (vid && String(vid) !== "-1") {
                     const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
                     const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
                     const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
-                    const clicks = Number(item.metrics?.clicks || 0);
-                    const impressions = Number(item.metrics?.impressions || 0);
 
                     const existing = creativeMap.get(String(vid));
                     if (existing) {
                       existing.spend += cost;
                       existing.gmv += gmv;
                       existing.orders += orders;
-                      existing.clicks += clicks;
-                      existing.impressions += impressions;
                     } else {
                       creativeMap.set(String(vid), {
                         videoId: String(vid),
@@ -608,16 +608,16 @@ export class TikTokApiService {
                         spend: cost,
                         gmv: gmv,
                         orders: orders,
-                        clicks: clicks,
-                        impressions: impressions,
+                        clicks: 0,
+                        impressions: 0,
                       });
                     }
                   }
                 }
                 break;
               }
-            } catch (variantErr) {
-              // Try next variant
+            } catch (variantErr: any) {
+              logger.warn(`GMV Max creative report error with dims ${JSON.stringify(dims)}: ${variantErr.message}`);
             }
           }
         }
