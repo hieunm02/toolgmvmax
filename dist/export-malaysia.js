@@ -536,44 +536,98 @@ var TikTokApiService = class {
             }
             activeCampIds = Array.from(new Set(activeCampIds));
             logger.info(`Scanning creatives for ${activeCampIds.length} active spending product campaigns (Store: ${storeId}) on ${date}`);
-            for (const cid of activeCampIds) {
-              let itemGroupIds = [];
-              try {
-                const itemGroupFilters = JSON.stringify({ campaign_ids: [String(cid)] });
-                const itemGroupUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_group_id"]))}&filtering=${encodeURIComponent(itemGroupFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
-                const itemGroupRes = await fetch(itemGroupUrl, { headers: { "Access-Token": accessToken } });
-                const itemGroupData = await itemGroupRes.json();
-                if (itemGroupData.code === 0 && itemGroupData.data?.list) {
-                  itemGroupIds = itemGroupData.data.list.map((item) => item.dimensions?.item_group_id).filter(Boolean);
+            await Promise.all(
+              activeCampIds.map(async (cid) => {
+                let itemGroupIds = [];
+                try {
+                  const itemGroupFilters = JSON.stringify({ campaign_ids: [String(cid)] });
+                  const itemGroupUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_group_id"]))}&filtering=${encodeURIComponent(itemGroupFilters)}&metrics=${encodeURIComponent(JSON.stringify(["cost", "gross_revenue", "orders", "roi"]))}&start_date=${date}&end_date=${date}&page_size=100`;
+                  const itemGroupRes = await fetch(itemGroupUrl, {
+                    headers: { "Access-Token": accessToken },
+                    signal: AbortSignal.timeout(1e4)
+                  });
+                  const itemGroupData = await itemGroupRes.json();
+                  if (itemGroupData.code === 0 && itemGroupData.data?.list) {
+                    itemGroupIds = itemGroupData.data.list.map((item) => item.dimensions?.item_group_id).filter(Boolean);
+                  }
+                } catch (igErr) {
                 }
-              } catch (igErr) {
-              }
-              for (const igid of itemGroupIds) {
-                let igPage = 1;
-                let igTotalPage = 1;
+                await Promise.all(
+                  itemGroupIds.map(async (igid) => {
+                    let igPage = 1;
+                    let igTotalPage = 1;
+                    do {
+                      try {
+                        const igFilters = JSON.stringify({
+                          campaign_ids: [String(cid)],
+                          item_group_ids: [String(igid)]
+                        });
+                        const igUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(igFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${igPage}`;
+                        const igRes = await fetch(igUrl, {
+                          headers: { "Access-Token": accessToken },
+                          signal: AbortSignal.timeout(1e4)
+                        });
+                        const igData = await igRes.json();
+                        if (igData.code === 0 && igData.data?.list) {
+                          for (const item of igData.data.list) {
+                            const vid = item.dimensions?.item_id;
+                            if (vid && String(vid) !== "-1") {
+                              const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                              const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                              const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+                              if (cost > 0 || gmv > 0 || orders > 0) {
+                                const existing = creativeMap.get(String(vid));
+                                if (existing) {
+                                  existing.spend += cost;
+                                  existing.gmv += gmv;
+                                  existing.orders += orders;
+                                } else {
+                                  creativeMap.set(String(vid), {
+                                    videoId: String(vid),
+                                    name: `Post ${vid}`,
+                                    spend: cost,
+                                    gmv,
+                                    orders,
+                                    clicks: 0,
+                                    impressions: 0
+                                  });
+                                }
+                              }
+                            }
+                          }
+                          igTotalPage = igData.data.page_info?.total_page || 1;
+                          igPage++;
+                        } else {
+                          break;
+                        }
+                      } catch (igErr) {
+                        break;
+                      }
+                    } while (igPage <= igTotalPage && igPage <= 3);
+                  })
+                );
+                let cPage = 1;
+                let cTotalPage = 1;
                 do {
                   try {
-                    const igFilters = JSON.stringify({
-                      campaign_ids: [String(cid)],
-                      item_group_ids: [String(igid)]
+                    const creativeFilters = JSON.stringify({
+                      campaign_ids: [String(cid)]
                     });
-                    const igUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(igFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${igPage}`;
-                    const igRes = await fetch(igUrl, { headers: { "Access-Token": accessToken } });
-                    const igData = await igRes.json();
-                    if (igData.code === 0 && igData.data?.list) {
-                      for (const item of igData.data.list) {
+                    const directUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(creativeFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${cPage}`;
+                    const directRes = await fetch(directUrl, {
+                      headers: { "Access-Token": accessToken },
+                      signal: AbortSignal.timeout(1e4)
+                    });
+                    const directData = await directRes.json();
+                    if (directData.code === 0 && directData.data?.list) {
+                      for (const item of directData.data.list) {
                         const vid = item.dimensions?.item_id;
                         if (vid && String(vid) !== "-1") {
-                          const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
-                          const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
-                          const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
-                          if (cost > 0 || gmv > 0 || orders > 0) {
-                            const existing = creativeMap.get(String(vid));
-                            if (existing) {
-                              existing.spend += cost;
-                              existing.gmv += gmv;
-                              existing.orders += orders;
-                            } else {
+                          if (!creativeMap.has(String(vid))) {
+                            const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
+                            const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
+                            const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
+                            if (cost > 0 || gmv > 0 || orders > 0) {
                               creativeMap.set(String(vid), {
                                 videoId: String(vid),
                                 name: `Post ${vid}`,
@@ -587,58 +641,17 @@ var TikTokApiService = class {
                           }
                         }
                       }
-                      igTotalPage = igData.data.page_info?.total_page || 1;
-                      igPage++;
+                      cTotalPage = directData.data.page_info?.total_page || 1;
+                      cPage++;
                     } else {
                       break;
                     }
-                  } catch (igErr) {
+                  } catch (cErr) {
                     break;
                   }
-                } while (igPage <= igTotalPage);
-              }
-              let cPage = 1;
-              let cTotalPage = 1;
-              do {
-                try {
-                  const creativeFilters = JSON.stringify({
-                    campaign_ids: [String(cid)]
-                  });
-                  const directUrl = `${this.getBaseUrl()}/gmv_max/report/get/?advertiser_id=${advertiserId}&store_ids=${encodeURIComponent(JSON.stringify([storeId]))}&dimensions=${encodeURIComponent(JSON.stringify(["item_id"]))}&filtering=${encodeURIComponent(creativeFilters)}&metrics=${encodeURIComponent(JSON.stringify(["roi", "orders", "cost", "gross_revenue"]))}&start_date=${date}&end_date=${date}&page_size=100&page=${cPage}`;
-                  const directRes = await fetch(directUrl, { headers: { "Access-Token": accessToken } });
-                  const directData = await directRes.json();
-                  if (directData.code === 0 && directData.data?.list) {
-                    for (const item of directData.data.list) {
-                      const vid = item.dimensions?.item_id;
-                      if (vid && String(vid) !== "-1") {
-                        if (!creativeMap.has(String(vid))) {
-                          const cost = Number(item.metrics?.cost || item.metrics?.spend || 0);
-                          const gmv = Number(item.metrics?.gross_revenue || item.metrics?.value_per_complete_payment || 0);
-                          const orders = Number(item.metrics?.orders || item.metrics?.complete_payment || 0);
-                          if (cost > 0 || gmv > 0 || orders > 0) {
-                            creativeMap.set(String(vid), {
-                              videoId: String(vid),
-                              name: `Post ${vid}`,
-                              spend: cost,
-                              gmv,
-                              orders,
-                              clicks: 0,
-                              impressions: 0
-                            });
-                          }
-                        }
-                      }
-                    }
-                    cTotalPage = directData.data.page_info?.total_page || 1;
-                    cPage++;
-                  } else {
-                    break;
-                  }
-                } catch (cErr) {
-                  break;
-                }
-              } while (cPage <= cTotalPage);
-            }
+                } while (cPage <= cTotalPage && cPage <= 3);
+              })
+            );
           }
         }
       } catch (gmvErr) {
@@ -715,44 +728,65 @@ var TikTokApiService = class {
         logger.warn("Standard ad report query failed", adErr);
       }
       const videoNamesMap = /* @__PURE__ */ new Map();
-      try {
-        let libPage = 1;
-        let libTotalPage = 1;
-        do {
-          const libraryUrl = `${this.getBaseUrl()}/file/video/ad/search/?advertiser_id=${advertiserId}&page_size=100&page=${libPage}`;
-          const libraryRes = await fetch(libraryUrl, { headers: { "Access-Token": accessToken } });
-          const libraryData = await libraryRes.json();
-          if (libraryData.code === 0 && libraryData.data?.list) {
-            for (const video of libraryData.data.list) {
-              const vid = String(video.video_id);
-              const url = video.preview_url || video.video_url;
-              const urlMatch = url?.match(/@([^/?]+)/);
-              const author = urlMatch ? urlMatch[1] : video.author_username || video.identity_name || void 0;
-              const authType = String(video.authorization_type || video.identity_type || "").toLowerCase();
-              const channelType = authType.includes("official") || authType.includes("shop") ? "INHOUSE" : authType.includes("affiliate") ? "AFFILIATE" : void 0;
-              const metaObj = {
-                name: video.video_name || `Video ${vid}`,
-                url,
-                authorUsername: author,
-                authorName: video.author_name,
-                channelType
-              };
-              videoNamesMap.set(vid, metaObj);
-              if (video.item_id)
-                videoNamesMap.set(String(video.item_id), metaObj);
-              if (video.tiktok_item_id)
-                videoNamesMap.set(String(video.tiktok_item_id), metaObj);
-              if (video.post_id)
-                videoNamesMap.set(String(video.post_id), metaObj);
-            }
-            libTotalPage = libraryData.data.page_info?.total_page || 1;
-            libPage++;
-          } else {
-            break;
+      if (creativeMap.size > 0) {
+        try {
+          const knownDbCreatives = await prisma.creative.findMany({
+            where: { videoId: { in: Array.from(creativeMap.keys()) } },
+            select: { videoId: true, name: true, videoUrl: true, authorUsername: true, authorName: true, channelType: true }
+          });
+          for (const k of knownDbCreatives) {
+            videoNamesMap.set(k.videoId, {
+              name: k.name,
+              url: k.videoUrl || void 0,
+              authorUsername: k.authorUsername || void 0,
+              authorName: k.authorName || void 0,
+              channelType: k.channelType
+            });
           }
-        } while (libPage <= libTotalPage && libPage <= 5);
-      } catch (metaErr) {
-        logger.warn("Failed to fetch video library metadata", metaErr);
+          const hasUnknown = Array.from(creativeMap.keys()).some((vid) => !videoNamesMap.has(vid));
+          if (hasUnknown) {
+            let libPage = 1;
+            let libTotalPage = 1;
+            do {
+              const libraryUrl = `${this.getBaseUrl()}/file/video/ad/search/?advertiser_id=${advertiserId}&page_size=100&page=${libPage}`;
+              const libraryRes = await fetch(libraryUrl, {
+                headers: { "Access-Token": accessToken },
+                signal: AbortSignal.timeout(1e4)
+              });
+              const libraryData = await libraryRes.json();
+              if (libraryData.code === 0 && libraryData.data?.list) {
+                for (const video of libraryData.data.list) {
+                  const vid = String(video.video_id);
+                  const url = video.preview_url || video.video_url;
+                  const urlMatch = url?.match(/@([^/?]+)/);
+                  const author = urlMatch ? urlMatch[1] : video.author_username || video.identity_name || void 0;
+                  const authType = String(video.authorization_type || video.identity_type || "").toLowerCase();
+                  const channelType = authType.includes("official") || authType.includes("shop") ? "INHOUSE" : authType.includes("affiliate") ? "AFFILIATE" : void 0;
+                  const metaObj = {
+                    name: video.video_name || `Video ${vid}`,
+                    url,
+                    authorUsername: author,
+                    authorName: video.author_name,
+                    channelType
+                  };
+                  videoNamesMap.set(vid, metaObj);
+                  if (video.item_id)
+                    videoNamesMap.set(String(video.item_id), metaObj);
+                  if (video.tiktok_item_id)
+                    videoNamesMap.set(String(video.tiktok_item_id), metaObj);
+                  if (video.post_id)
+                    videoNamesMap.set(String(video.post_id), metaObj);
+                }
+                libTotalPage = libraryData.data.page_info?.total_page || 1;
+                libPage++;
+              } else {
+                break;
+              }
+            } while (libPage <= libTotalPage && libPage <= 2);
+          }
+        } catch (metaErr) {
+          logger.warn("Failed to fetch video library metadata", metaErr);
+        }
       }
       const result = Array.from(creativeMap.values()).map((c) => {
         const meta = videoNamesMap.get(c.videoId);

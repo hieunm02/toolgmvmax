@@ -7,6 +7,7 @@ const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 // Lock to prevent overlapping sync runs from stacking up and overloading CPU
 let isSyncRunning = false;
+let syncWatchdogTimer: NodeJS.Timeout | null = null;
 
 async function runCronSync() {
   if (isSyncRunning) {
@@ -16,12 +17,25 @@ async function runCronSync() {
 
   isSyncRunning = true;
   logger.info("Executing scheduled synchronization task...");
+
+  // Safety watchdog: auto-release lock after 2.5 minutes if something gets stuck
+  syncWatchdogTimer = setTimeout(() => {
+    if (isSyncRunning) {
+      logger.error("Sync task exceeded 2.5 minutes timeout limit! Forcing lock release.");
+      isSyncRunning = false;
+    }
+  }, 150000);
+
   try {
     const result = await SyncService.syncAllAccounts();
     logger.info("Synchronization completed.", result);
   } catch (error) {
     logger.error("Synchronization scheduler encountered an unhandled exception", error);
   } finally {
+    if (syncWatchdogTimer) {
+      clearTimeout(syncWatchdogTimer);
+      syncWatchdogTimer = null;
+    }
     isSyncRunning = false;
   }
 }

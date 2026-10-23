@@ -192,6 +192,27 @@ export async function GET(request: Request) {
 
     const chartData = Array.from(chartMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
+    // Resolve real last sync time
+    let lastSyncTime: string | null = null;
+    try {
+      const { redis } = await import("../../../lib/redis");
+      if (redis) {
+        lastSyncTime = await redis.get("last_sync_timestamp");
+      }
+    } catch (e) {}
+
+    if (!lastSyncTime) {
+      try {
+        const latestSnapshot = await prisma.campaignSpendSnapshot.findFirst({
+          orderBy: { timestamp: "desc" },
+          select: { timestamp: true },
+        });
+        if (latestSnapshot) {
+          lastSyncTime = latestSnapshot.timestamp.toISOString();
+        }
+      } catch (e) {}
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -202,6 +223,7 @@ export async function GET(request: Request) {
           averageROI,
           averageCTR,
           sources,
+          lastSyncTime,
         },
         chartData,
       },

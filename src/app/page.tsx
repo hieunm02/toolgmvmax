@@ -494,6 +494,7 @@ export default function Dashboard() {
   const [startDate, setStartDate] = useState<string>(getTodayString);
   const [endDate, setEndDate] = useState<string>(getTodayString);
   const [lastUpdatedTime, setLastUpdatedTime] = useState<string>("");
+  const [lastSyncTime, setLastSyncTime] = useState<string>("");
   const [campaignPage, setCampaignPage] = useState<number>(1);
   const [isRelaunchConfigOpen, setIsRelaunchConfigOpen] = useState<boolean>(false);
   const [isFilterBarOpen, setIsFilterBarOpen] = useState<boolean>(false);
@@ -1645,7 +1646,12 @@ export default function Dashboard() {
         alertRes.json(),
       ]);
 
-      if (dash.success) setWidgets(dash.data.widgets);
+      if (dash.success) {
+        setWidgets(dash.data.widgets);
+        if (dash.data.widgets?.lastSyncTime) {
+          setLastSyncTime(dash.data.widgets.lastSyncTime);
+        }
+      }
       if (camp.success) setCampaigns(camp.data);
       if (prod.success) setProductsData(prod.data);
       if (creat.success) setCreativesData(creat.data);
@@ -1685,7 +1691,12 @@ export default function Dashboard() {
         fetch(`/api/campaigns${dateParam}`),
       ]);
       const [dash, camp] = await Promise.all([dashRes.json(), campRes.json()]);
-      if (dash.success) setWidgets(dash.data.widgets);
+      if (dash.success) {
+        setWidgets(dash.data.widgets);
+        if (dash.data.widgets?.lastSyncTime) {
+          setLastSyncTime(dash.data.widgets.lastSyncTime);
+        }
+      }
       if (camp.success) {
         setCampaigns(camp.data);
         setCampaignPage(1);
@@ -3272,10 +3283,27 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
-          <div className="text-[10px] text-gray-500 font-mono flex-shrink-0 self-end md:self-auto pb-1 md:pb-0">
-            {lang === "vi" 
-              ? `Đồng bộ tự động: 5 phút / lần${lastUpdatedTime ? ` • Cập nhật: ${lastUpdatedTime}` : ""}` 
-              : `${t.lastUpdate}${lastUpdatedTime ? ` • ${lastUpdatedTime}` : ""}`}
+          <div className="flex items-center gap-3 text-[10px] text-gray-400 font-mono flex-shrink-0 self-end md:self-auto pb-1 md:pb-0">
+            <span>
+              {lang === "vi" ? "Đồng bộ TikTok: " : "TikTok Sync: "}
+              <strong className="text-gray-200">
+                {lastSyncTime
+                  ? new Date(lastSyncTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                  : (lastUpdatedTime || "--:--:--")}
+              </strong>
+              {" "}(Tự động 5 phút / lần)
+            </span>
+            <button
+              onClick={() => handleSync()}
+              disabled={syncing}
+              className="px-2 py-0.5 rounded bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 text-[10px] transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              title={lang === "vi" ? "Bấm để đồng bộ số liệu mới nhất từ TikTok ngay" : "Sync latest from TikTok now"}
+            >
+              <svg className={`h-3 w-3 ${syncing ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.253 8H18" />
+              </svg>
+              <span>{syncing ? (lang === "vi" ? "Đang đồng bộ..." : "Syncing...") : (lang === "vi" ? "Đồng bộ ngay" : "Sync now")}</span>
+            </button>
           </div>
         </section>
 

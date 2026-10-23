@@ -225,6 +225,14 @@ export class SyncService {
           logger.error(`Alert engine failed for shop ${shopId}`, alertError);
         }
       }
+
+      // Record latest successful sync timestamp in Redis / memory
+      try {
+        const { redis } = await import("../lib/redis");
+        if (redis) {
+          await redis.set("last_sync_timestamp", new Date().toISOString());
+        }
+      } catch (rErr) {}
     }
 
     return {
