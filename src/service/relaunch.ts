@@ -35,6 +35,45 @@ export class CampaignRelaunchService {
 
       const { accessToken, advertiserId } = oldCampaign.advertiser;
 
+      // Real-time verification: check if this GMV Max campaign is already disabled or renamed on TikTok
+      if (oldCampaign.objectiveType === "OUTFLOW_GMV_MAX") {
+        try {
+          const infoUrl = `${TikTokApiService.getBaseUrl()}/campaign/gmv_max/info/?advertiser_id=${advertiserId}&campaign_id=${campaignId}`;
+          const infoRes = await fetch(infoUrl, {
+            headers: { "Access-Token": accessToken },
+            signal: AbortSignal.timeout(8000),
+          });
+          const infoData = await infoRes.json();
+          if (infoData.code === 0 && infoData.data) {
+            const config = infoData.data;
+
+            // Sync current name from TikTok if changed
+            if (config.campaign_name && config.campaign_name !== oldCampaign.name) {
+              await prisma.campaign.update({
+                where: { campaignId },
+                data: { name: config.campaign_name },
+              });
+              oldCampaign.name = config.campaign_name;
+            }
+
+            // Guard: If campaign was already manually disabled on TikTok Ads Manager and this is auto-relaunch (!force)
+            if (config.operation_status === "DISABLE" && !force) {
+              logger.warn(`Campaign ${campaignId} (${oldCampaign.name}) is already DISABLED on TikTok Ads Manager. Skipping auto-relaunch.`);
+              await prisma.campaign.update({
+                where: { campaignId },
+                data: { status: "CAMPAIGN_STATUS_DISABLE" },
+              });
+              return {
+                success: false,
+                error: `Chiến dịch "${oldCampaign.name}" đã được tắt trên TikTok Ads Manager từ trước. Đã đồng bộ trạng thái tắt.`,
+              };
+            }
+          }
+        } catch (checkErr) {
+          logger.warn(`Could not verify TikTok real-time campaign status: ${checkErr}`);
+        }
+      }
+
       // Check safety rules: less than 20 orders today (unless forced by manual user action)
       const todayStr = getVietnamDateString();
       const reportToday = await prisma.campaignReport.findFirst({
