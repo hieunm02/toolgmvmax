@@ -93,80 +93,121 @@ export class CampaignRelaunchService {
       }
 
       // 2. Pause the old campaign on TikTok Ads
-      logger.info(`Pausing old campaign ${campaignId} via TikTok API`);
-      await TikTokApiService.pauseCampaign(accessToken, advertiserId, campaignId);
+      let oldCampaignWasPaused = false;
+      try {
+        logger.info(`Pausing old campaign ${campaignId} via TikTok API`);
+        await TikTokApiService.pauseCampaign(accessToken, advertiserId, campaignId);
+        oldCampaignWasPaused = true;
 
-      // Update old campaign status in database
-      await prisma.campaign.update({
-        where: { campaignId },
-        data: { status: "CAMPAIGN_STATUS_DISABLE" },
-      });
+        // Update old campaign status in database
+        await prisma.campaign.update({
+          where: { campaignId },
+          data: { status: "CAMPAIGN_STATUS_DISABLE" },
+        });
 
-      // Wait 5 seconds
-      logger.info("Waiting 5 seconds for TikTok Ads to release identity/store...");
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+        // Wait 5 seconds
+        logger.info("Waiting 5 seconds for TikTok Ads to release identity/store...");
+        await new Promise((resolve) => setTimeout(resolve, 5000));
 
-      // 3. Clone and create new campaign
-      logger.info(`Cloning campaign ${campaignId} configuration to create new campaign`);
-      const clonedCampaign = await TikTokApiService.cloneCampaign(accessToken, advertiserId, {
-        campaignId: oldCampaign.campaignId,
-        name: oldCampaign.name,
-        objectiveType: oldCampaign.objectiveType,
-        budget: customBudget !== undefined ? customBudget : oldCampaign.budget,
-        budgetMode: oldCampaign.budgetMode,
-        shoppingAdsType: oldCampaign.shoppingAdsType,
-        roasBid: customRoasBid,
-      });
+        // 3. Clone and create new campaign with auto-retry
+        logger.info(`Cloning campaign ${campaignId} configuration to create new campaign`);
+        let clonedCampaign: { campaignId: string; name: string } | null = null;
+        let lastCloneError: any = null;
 
-      // 4. Save new campaign in database
-      const newCampRecord = await CampaignRepository.upsertCampaign({
-        campaignId: clonedCampaign.campaignId,
-        name: clonedCampaign.name,
-        status: "CAMPAIGN_STATUS_ENABLE",
-        objectiveType: oldCampaign.objectiveType,
-        budget: customBudget !== undefined ? customBudget : oldCampaign.budget,
-        budgetMode: oldCampaign.budgetMode,
-        advertiserId: oldCampaign.advertiserId,
-        shoppingAdsType: oldCampaign.shoppingAdsType || "PRODUCT",
-      });
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            clonedCampaign = await TikTokApiService.cloneCampaign(accessToken, advertiserId, {
+              campaignId: oldCampaign.campaignId,
+              name: oldCampaign.name,
+              objectiveType: oldCampaign.objectiveType,
+              budget: customBudget !== undefined ? customBudget : oldCampaign.budget,
+              budgetMode: oldCampaign.budgetMode,
+              shoppingAdsType: oldCampaign.shoppingAdsType,
+              roasBid: customRoasBid,
+            });
+            if (clonedCampaign && clonedCampaign.campaignId) {
+              break;
+            }
+          } catch (cloneErr: any) {
+            lastCloneError = cloneErr;
+            logger.warn(`Attempt ${attempt}/2 to clone campaign ${campaignId} failed: ${cloneErr.message}`);
+            if (attempt < 2) {
+              await new Promise((resolve) => setTimeout(resolve, 3000));
+            }
+          }
+        }
 
-      // 5. Initialize an empty performance report for today
-      await CampaignRepository.upsertCampaignReport({
-        campaignId: newCampRecord.id,
-        date: new Date(todayStr),
-        spend: 0,
-        gmv: 0,
-        roi: 0,
-        orders: 0,
-        impressions: 0,
-        clicks: 0,
-        ctr: 0,
-        conversionRate: 0,
-      });
+        if (!clonedCampaign || !clonedCampaign.campaignId) {
+          throw lastCloneError || new Error("Failed to clone campaign after retries");
+        }
 
-      // 6. Resolve related Alerts
-      if (alertId) {
-        await AlertRepository.resolveAlert(alertId);
+        // 4. Save new campaign in database
+        const newCampRecord = await CampaignRepository.upsertCampaign({
+          campaignId: clonedCampaign.campaignId,
+          name: clonedCampaign.name,
+          status: "CAMPAIGN_STATUS_ENABLE",
+          objectiveType: oldCampaign.objectiveType,
+          budget: customBudget !== undefined ? customBudget : oldCampaign.budget,
+          budgetMode: oldCampaign.budgetMode,
+          advertiserId: oldCampaign.advertiserId,
+          shoppingAdsType: oldCampaign.shoppingAdsType || "PRODUCT",
+        });
+
+        // 5. Initialize an empty performance report for today
+        await CampaignRepository.upsertCampaignReport({
+          campaignId: newCampRecord.id,
+          date: new Date(todayStr),
+          spend: 0,
+          gmv: 0,
+          roi: 0,
+          orders: 0,
+          impressions: 0,
+          clicks: 0,
+          ctr: 0,
+          conversionRate: 0,
+        });
+
+        // 6. Resolve related Alerts
+        if (alertId) {
+          await AlertRepository.resolveAlert(alertId);
+        }
+
+        const relatedAlerts = await prisma.alert.findMany({
+          where: {
+            status: "UNRESOLVED",
+            type: "LOW_ROI_RELAUNCH_RECOMMENDATION",
+            message: { contains: `[CAMPAIGN_ID:${campaignId}]` },
+          },
+        });
+
+        for (const a of relatedAlerts) {
+          await AlertRepository.resolveAlert(a.id);
+        }
+
+        logger.info(`Successfully relaunched campaign ${campaignId} into new campaign ${clonedCampaign.campaignId}`);
+
+        return {
+          success: true,
+          newCampaignId: clonedCampaign.campaignId,
+        };
+      } catch (innerErr: any) {
+        // SAFETY ROLLBACK: If we paused the old campaign but failed to create the new one,
+        // IMMEDIATELY re-enable the old campaign so advertising delivery never stays stopped!
+        if (oldCampaignWasPaused) {
+          logger.warn(`ROLLBACK TRIGGERED: Re-enabling old campaign ${campaignId} (${oldCampaign.name}) on TikTok to prevent delivery blackout!`);
+          try {
+            await TikTokApiService.updateCampaignStatus(accessToken, advertiserId, campaignId, "ENABLE");
+            await prisma.campaign.update({
+              where: { campaignId },
+              data: { status: "CAMPAIGN_STATUS_ENABLE" },
+            });
+            logger.info(`Rollback successfully completed: Campaign ${campaignId} is back ONLINE.`);
+          } catch (rollbackErr: any) {
+            logger.error(`FATAL: Could not re-enable old campaign ${campaignId} during rollback: ${rollbackErr.message}`, rollbackErr);
+          }
+        }
+        throw innerErr;
       }
-
-      const relatedAlerts = await prisma.alert.findMany({
-        where: {
-          status: "UNRESOLVED",
-          type: "LOW_ROI_RELAUNCH_RECOMMENDATION",
-          message: { contains: `[CAMPAIGN_ID:${campaignId}]` },
-        },
-      });
-
-      for (const a of relatedAlerts) {
-        await AlertRepository.resolveAlert(a.id);
-      }
-
-      logger.info(`Successfully relaunched campaign ${campaignId} into new campaign ${clonedCampaign.campaignId}`);
-
-      return {
-        success: true,
-        newCampaignId: clonedCampaign.campaignId,
-      };
     } catch (e: any) {
       logger.error("Relaunch service failed", e);
       return { success: false, error: e.message };

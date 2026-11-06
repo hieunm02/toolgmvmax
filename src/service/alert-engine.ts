@@ -161,6 +161,8 @@ export class AlertEngineService {
           await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", message, `[${typeLabel}] ROI < ${roiThreshold.toFixed(1)} AND SPEND >= ${minSpend} AND ORDERS < ${maxOrders}`, campRoi);
         } else {
           logger.error(`Failed to auto-relaunch [${typeLabel}] campaign ${campaign.campaignId}: ${relaunchResult.error}`);
+          const failMessage = `⚠️ [CẢNH BÁO LÊN CAMP] Tự động tạo chiến dịch mới cho [${typeLabel}] "${campaign.name}" (${campaign.campaignId}) không thành công: ${relaunchResult.error}.\n\n🛡️ Hệ thống đã tự động BẬT LẠI chiến dịch cũ để đảm bảo quảng cáo không bị gián đoạn và không làm tụt doanh số! [CAMPAIGN_ID:${campaign.campaignId}]`;
+          await this.triggerAlert(shop.id, shop.name, "LOW_ROI_AUTO_RELAUNCHED", failMessage, `AUTO_RELAUNCH_FAILED_SAFE_ROLLBACK`, campRoi);
         }
       }
     }
