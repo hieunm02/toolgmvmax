@@ -459,7 +459,6 @@ export default function Dashboard() {
   const [dbAdvertisers, setDbAdvertisers] = useState<any[]>([]);
   const [syncing, setSyncing] = useState<boolean>(false);
   const [sendingReport, setSendingReport] = useState<boolean>(false);
-  const [exportingSheet, setExportingSheet] = useState<boolean>(false);
   const [showHistoricalSyncModal, setShowHistoricalSyncModal] = useState<boolean>(false);
   const [historicalSyncing, setHistoricalSyncing] = useState<boolean>(false);
   const [historicalSyncStart, setHistoricalSyncStart] = useState<string>("");
@@ -1927,50 +1926,6 @@ export default function Dashboard() {
     }
   };
 
-  // Export October Direct TikTok API Report handler
-  const handleExportOctoberReport = async () => {
-    setExportingSheet(true);
-    showToast(
-      lang === "vi" 
-        ? "Đang kết nối TikTok API kéo dữ liệu 21 ngày tháng 10... Vui lòng đợi trong giây lát!" 
-        : "Fetching 21 days from TikTok API... Please wait!", 
-      "info"
-    );
-    try {
-      const response = await fetch("/api/export/malaysia");
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({ error: "Lỗi kết nối API" }));
-        throw new Error(errData.error || `HTTP ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `malaysia_october_report_${new Date().toISOString().split("T")[0]}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-
-      showToast(
-        lang === "vi" 
-          ? "Đã tải xuống thành công file báo cáo tháng 10 của Shop Malaysia!" 
-          : "October report downloaded successfully!", 
-        "success"
-      );
-    } catch (err: any) {
-      showToast(
-        lang === "vi" 
-          ? `Xuất báo cáo thất bại: ${err.message}` 
-          : `Export failed: ${err.message}`, 
-        "error"
-      );
-    } finally {
-      setExportingSheet(false);
-    }
-  };
-
   // Logout handler
   const handleLogout = async () => {
     try {
@@ -2527,35 +2482,6 @@ export default function Dashboard() {
                       <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-1-.65-.35-1 .22-1.62.15-.15 2.7-2.48 2.75-2.7.01-.03.01-.15-.07-.22-.08-.07-.2-.05-.29-.03-.12.03-2.04 1.29-5.74 3.79-.54.37-1.03.55-1.47.54-.48-.01-1.4-.27-2.08-.49-.83-.27-1.49-.41-1.43-.87.03-.24.36-.49.98-.74 3.84-1.67 6.4-2.77 7.68-3.3 3.65-1.52 4.41-1.78 4.9-.18l.05.09c.07.13.14.3.16.48.02.13.01.27-.01.4z"/>
                     </svg>
                     <span className="truncate text-white">{lang === "vi" ? "Báo cáo" : "Report"}</span>
-                  </>
-                )}
-              </button>
-
-              {/* Export October Report Button (Direct TikTok API) */}
-              <button
-                onClick={handleExportOctoberReport}
-                disabled={exportingSheet}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-xs font-semibold cursor-pointer ${
-                  exportingSheet
-                    ? "bg-[#15181F] border-[#2B303C] text-gray-500 cursor-not-allowed"
-                    : "border-emerald-500/30 bg-emerald-600/15 text-emerald-400 hover:bg-emerald-600/25"
-                }`}
-                title={lang === "vi" ? "Tải file Excel / CSV bóc tách 4 nguồn từ 01/10 đến nay trực tiếp từ TikTok API" : "Download October report directly from TikTok API"}
-              >
-                {exportingSheet ? (
-                  <>
-                    <svg className="animate-spin h-3.5 w-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span>{lang === "vi" ? "Đang xuất T10..." : "Exporting..."}</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span className="truncate">{lang === "vi" ? "Xuất Sheet T10" : "Export Sheet"}</span>
                   </>
                 )}
               </button>
@@ -3121,139 +3047,6 @@ export default function Dashboard() {
             </div>
             <div className="mt-2 h-1 w-full bg-[#1F232B] rounded-full overflow-hidden">
               <div className="h-full bg-pink-500 w-2/5 rounded-full" />
-            </div>
-          </div>
-        </section>
-
-        {/* 4 Revenue Sources Breakdown (Live, Video In-house, Video Affiliate, Thẻ sản phẩm) */}
-        <section className="bg-[#111318] border border-[#1F232B] rounded-xl p-4 sm:p-5 flex flex-col gap-3.5 shadow-lg">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1F232B] pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="h-6 w-1 bg-gradient-to-b from-indigo-500 via-rose-500 to-emerald-500 rounded-full" />
-              <div>
-                <h3 className="text-xs font-bold text-white tracking-wider uppercase font-mono flex items-center gap-2">
-                  <span>{lang === "vi" ? "PHÂN BỔ DOANH THU THEO NGUỒN" : "REVENUE BREAKDOWN BY SOURCE"}</span>
-                  <span className="text-[9px] font-normal normal-case px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                    {lang === "vi" ? "Tự động phân loại" : "Auto-categorized"}
-                  </span>
-                </h3>
-                <p className="text-[10px] text-gray-500 mt-0.5">
-                  {lang === "vi" 
-                    ? "Hiệu quả chi tiết giữa Livestream, Video In-house (kênh nhà), Video Affiliate (KOC) và Thẻ sản phẩm" 
-                    : "Performance split between Live, In-house Video, Affiliate Video and Product Cards"}
-                </p>
-              </div>
-            </div>
-            {selectedShop && (
-              <div className="flex items-center gap-2 self-start sm:self-auto">
-                <span className="text-[10px] font-mono text-gray-400 bg-[#15181F] border border-[#2B303C] px-2.5 py-1 rounded-md">
-                  {lang === "vi" ? "Kênh In-house: " : "In-house: "}
-                  <strong className="text-emerald-400">
-                    {tempInhouseChannels.trim() ? tempInhouseChannels : (lang === "vi" ? "Chưa cài đặt" : "None")}
-                  </strong>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRelaunchConfigTab("channels");
-                    setIsRelaunchConfigOpen(true);
-                  }}
-                  className="text-[10px] font-mono text-indigo-400 hover:text-indigo-300 underline"
-                  title={lang === "vi" ? "Cài đặt danh sách kênh TikTok In-house" : "Configure in-house channels"}
-                >
-                  {lang === "vi" ? "Cài đặt" : "Edit"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {/* 1. Live Shopping */}
-            <div className="bg-[#15181F] border border-rose-500/20 hover:border-rose-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-rose-400 flex items-center gap-1.5 font-mono uppercase">
-                  <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                  {lang === "vi" ? "Doanh thu LIVE" : "LIVE Shopping"}
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-rose-950/70 text-rose-300 border border-rose-900/60 font-bold">
-                  ROI: {((activeWidgets as any).sources?.live?.roi || 0).toFixed(2)}x
-                </span>
-              </div>
-              <div className="mt-2.5">
-                <span className="text-xl font-bold text-white tracking-tight">
-                  {formatVND((activeWidgets as any).sources?.live?.gmv || 0)}
-                </span>
-                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
-                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.live?.spend || 0)}</strong></span>
-                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-rose-400">{(activeWidgets as any).sources?.live?.orders || 0}</strong></span>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. Video In-house */}
-            <div className="bg-[#15181F] border border-emerald-500/20 hover:border-emerald-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5 font-mono uppercase">
-                  <span>🎬</span>
-                  {lang === "vi" ? "Video In-house" : "In-house Video"}
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-900/60 font-bold">
-                  ROI: {((activeWidgets as any).sources?.inhouse?.roi || 0).toFixed(2)}x
-                </span>
-              </div>
-              <div className="mt-2.5">
-                <span className="text-xl font-bold text-white tracking-tight">
-                  {formatVND((activeWidgets as any).sources?.inhouse?.gmv || 0)}
-                </span>
-                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
-                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.inhouse?.spend || 0)}</strong></span>
-                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-emerald-400">{(activeWidgets as any).sources?.inhouse?.orders || 0}</strong></span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Video Affiliate (KOC) */}
-            <div className="bg-[#15181F] border border-indigo-500/20 hover:border-indigo-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-indigo-400 flex items-center gap-1.5 font-mono uppercase">
-                  <span>✨</span>
-                  {lang === "vi" ? "Video Affiliate (KOC)" : "Affiliate Video"}
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-900/60 font-bold">
-                  ROI: {((activeWidgets as any).sources?.affiliate?.roi || 0).toFixed(2)}x
-                </span>
-              </div>
-              <div className="mt-2.5">
-                <span className="text-xl font-bold text-white tracking-tight">
-                  {formatVND((activeWidgets as any).sources?.affiliate?.gmv || 0)}
-                </span>
-                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
-                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.affiliate?.spend || 0)}</strong></span>
-                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-indigo-400">{(activeWidgets as any).sources?.affiliate?.orders || 0}</strong></span>
-                </div>
-              </div>
-            </div>
-
-            {/* 4. Thẻ sản phẩm (Product Cards) */}
-            <div className="bg-[#15181F] border border-cyan-500/20 hover:border-cyan-500/40 rounded-lg p-3.5 flex flex-col justify-between transition-all group">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-cyan-400 flex items-center gap-1.5 font-mono uppercase">
-                  <span>🛍️</span>
-                  {lang === "vi" ? "Thẻ sản phẩm (Shop Tab)" : "Product Cards"}
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/70 text-cyan-300 border border-cyan-900/60 font-bold">
-                  ROI: {((activeWidgets as any).sources?.productCard?.roi || 0).toFixed(2)}x
-                </span>
-              </div>
-              <div className="mt-2.5">
-                <span className="text-xl font-bold text-white tracking-tight">
-                  {formatVND((activeWidgets as any).sources?.productCard?.gmv || 0)}
-                </span>
-                <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono mt-1 pt-1.5 border-t border-[#1F232B]">
-                  <span>{lang === "vi" ? "Chi phí:" : "Spend:"} <strong className="text-gray-200">{formatVND((activeWidgets as any).sources?.productCard?.spend || 0)}</strong></span>
-                  <span>{lang === "vi" ? "Đơn:" : "Orders:"} <strong className="text-cyan-400">{(activeWidgets as any).sources?.productCard?.orders || 0}</strong></span>
-                </div>
-              </div>
             </div>
           </div>
         </section>
